@@ -314,22 +314,23 @@ mod tests {
     #[test]
     fn test_derive_user_vault_pda() {
         let user_pubkey = Pubkey::new_unique();
+        let casino_pubkey = Pubkey::new_unique();
         let program_id = Pubkey::new_unique();
-        
-        let (pda1, bump1) = derive_user_vault_pda(&user_pubkey, &program_id);
-        let (pda2, bump2) = derive_user_vault_pda(&user_pubkey, &program_id);
-        
+
+        let (pda1, bump1) = derive_user_vault_pda(&user_pubkey, &casino_pubkey, &program_id);
+        let (pda2, bump2) = derive_user_vault_pda(&user_pubkey, &casino_pubkey, &program_id);
+
         assert_eq!(pda1, pda2);
         assert_eq!(bump1, bump2);
     }
 
     #[test]
-    fn test_derive_casino_vault_pda() {
+    fn test_derive_casino_pda() {
         let program_id = Pubkey::new_unique();
-        
-        let (pda1, bump1) = derive_casino_vault_pda(&program_id);
-        let (pda2, bump2) = derive_casino_vault_pda(&program_id);
-        
+
+        let (pda1, bump1) = derive_casino_pda(&program_id);
+        let (pda2, bump2) = derive_casino_pda(&program_id);
+
         assert_eq!(pda1, pda2);
         assert_eq!(bump1, bump2);
     }

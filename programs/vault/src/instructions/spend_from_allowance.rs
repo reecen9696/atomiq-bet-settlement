@@ -32,7 +32,7 @@ pub struct SpendFromAllowance<'info> {
             b"allowance",
             allowance.user.as_ref(),
             casino.key().as_ref(),
-            &allowance.created_at.to_le_bytes()
+            &allowance.nonce.to_le_bytes()
         ],
         bump = allowance.bump,
         constraint = allowance.user == vault.owner @ VaultError::InvalidAllowancePDA

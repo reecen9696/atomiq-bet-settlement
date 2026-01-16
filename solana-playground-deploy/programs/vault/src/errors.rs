@@ -74,6 +74,9 @@ pub enum VaultError {
     #[msg("Missing token delegation authority")]
     MissingTokenDelegation,
 
-    #[msg("Missing token account")]
+    #[msg("Missing required token account")]
     MissingTokenAccount,
+
+    #[msg("Invalid allowance nonce")]
+    InvalidAllowanceNonce,
 }

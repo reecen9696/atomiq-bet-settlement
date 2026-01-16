@@ -5,16 +5,9 @@ use std::env;
 pub struct Config {
     pub api_port: u16,
     pub metrics_port: u16,
-    pub database: DatabaseConfig,
     pub redis: RedisConfig,
     pub solana: SolanaConfig,
     pub betting: BettingConfig,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct DatabaseConfig {
-    pub url: String,
-    pub pool_size: u32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -47,13 +40,6 @@ impl Config {
             metrics_port: env::var("METRICS_PORT")
                 .unwrap_or_else(|_| "9090".to_string())
                 .parse()?,
-            database: DatabaseConfig {
-                url: env::var("DATABASE_URL")
-                    .expect("DATABASE_URL must be set"),
-                pool_size: env::var("DATABASE_POOL_SIZE")
-                    .unwrap_or_else(|_| "20".to_string())
-                    .parse()?,
-            },
             redis: RedisConfig {
                 url: env::var("REDIS_URL")
                     .unwrap_or_else(|_| "redis://localhost:6379".to_string()),

@@ -76,4 +76,7 @@ pub enum VaultError {
 
     #[msg("Missing required token account")]
     MissingTokenAccount,
+
+    #[msg("Invalid allowance nonce")]
+    InvalidAllowanceNonce,
 }

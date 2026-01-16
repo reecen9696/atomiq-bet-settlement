@@ -1,63 +1,45 @@
-# Solana Playground Deployment Instructions
+# Solana Playground Deployment (Devnet)
 
-## Overview
-This folder contains the fixed smart contract for the Atomik Wallet betting system. The main fix addresses the `InvalidTokenAccountOwner` error that was preventing wrapped SOL betting from working.
+## What this folder is
+This is a self-contained Anchor workspace intended to be uploaded/opened in Solana Playground for devnet deployment.
 
-## Key Changes Made
+The Anchor program lives at:
+- `programs/vault`
 
-### 1. Fixed spend_from_allowance.rs
-- **Problem**: Line 145 had `require!(user_token.owner == vault.key())` which failed when users owned their own token accounts
-- **Solution**: Added support for multiple ownership patterns:
-  - User-owned accounts with delegation to vault
-  - Vault-owned accounts (original working pattern)
-  - Proper error handling for missing delegation
+## Key behavior changes included
 
-### 2. Clear Token Type Separation
-- **Native SOL**: `System::id()` - direct vault to casino SOL transfer
-- **Wrapped SOL**: `So11111111111111111111111111111111111111112` - SPL token transfer
-- **Other SPL tokens**: Any other mint - SPL token transfer with delegation
+### 1) Deterministic allowance PDAs (fixes timestamp seed flakiness)
+The legacy allowance PDA design used `Clock::unix_timestamp` inside the PDA seeds. In practice, slow wallet popups and RPC delays made this flaky because the client couldn’t reliably “guess” the exact timestamp the program would see at execution time.
 
-### 3. New Error Types Added
-- `MissingTokenDelegation`: When user owns token account but hasn't delegated to vault
-- `MissingTokenAccount`: When required token accounts are missing
+This deploy folder includes the nonce-based replacement:
+- New PDA: `AllowanceNonceRegistry` (seeds: `[b"allowance-nonce", user, casino]`) storing `next_nonce`
+- New instruction: `approve_allowance_v2` creating allowances at seeds: `[b"allowance", user, casino, nonce]`
 
-## Deployment Steps
+### 2) Backwards-compatible spend/revoke
+`spend_from_allowance` and `revoke_allowance` validate the allowance PDA using `allowance.nonce`. This supports:
+- Legacy allowances (where `nonce` contains the old timestamp)
+- V2 allowances (where `nonce` is the deterministic u64 counter)
 
-1. **Upload to Solana Playground**:
-   - Compress this entire folder
-   - Upload to https://beta.solana.com/
-   - Or copy all files manually
+### 3) Wrapped SOL handling
+The program also includes the earlier fix for wrapped SOL spending:
+- Supports vault-owned token accounts OR user-owned accounts with delegation to the vault PDA
+- Uses `MissingTokenDelegation` / `MissingTokenAccount` errors for clearer failures
 
-2. **Build and Deploy**:
-   ```bash
-   anchor build
-   anchor deploy --provider.cluster devnet
-   ```
+## Deployment steps (Solana Playground)
 
-3. **Note the New Program ID**:
-   - After deployment, copy the new Program ID
-   - Update backend services with the new Program ID
+1. Upload/open this folder as an Anchor workspace in Solana Playground.
+2. Build + deploy to devnet.
+3. Copy the deployed Program ID.
+4. Update your clients:
+   - UI: set `VITE_VAULT_PROGRAM_ID` to the new Program ID
+   - Backend/processor: update the configured Program ID and restart
 
-4. **Update Backend Configuration**:
-   - Replace `HoWjrEKiWKjEvqtdMDAHS9PEwkHQbVp2t6vYuDv3mdi4` with new Program ID
-   - Restart all services (backend, processor)
+### Notes about Program ID
+If you deploy a *new* Program ID (most common in Playground), make sure the program ID your clients use matches the deployed program.
 
-## Testing Priority
+## Files you should see in the program
+- `programs/vault/src/state.rs` includes `AllowanceNonceRegistry`
+- `programs/vault/src/instructions/approve_allowance_v2.rs` exists and is exported from `programs/vault/src/instructions/mod.rs`
+- `programs/vault/src/lib.rs` exposes `approve_allowance_v2`
 
-After deployment, test in this order:
-1. **Native SOL betting** (primary focus) ✅
-2. **Wrapped SOL betting** (should now work) ✅
-3. **Other SPL tokens** (if needed) ✅
-
-## Expected Behavior
-
-- **Native SOL**: Works as before, vault transfers SOL directly to casino
-- **Wrapped SOL**: Now works with user-owned token accounts (with proper delegation)
-- **Delegation**: Users can delegate token spending authority to their vault PDA
-- **Error Messages**: Clear distinction between missing accounts vs missing delegation
-
-## Files Changed
-- `programs/vault/src/instructions/spend_from_allowance.rs` - Main fix
-- `programs/vault/src/errors.rs` - Added new error types
-
-The smart contract now properly supports the betting flow with both native SOL and wrapped SOL tokens!
+If any of the above are missing in Playground, you likely didn’t upload the full folder.

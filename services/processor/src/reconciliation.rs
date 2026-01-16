@@ -67,7 +67,7 @@ pub async fn reconcile_stuck_transactions(
                         .execute(db_pool)
                         .await?;
                         tracing::info!("Reconciled bet {}: confirmed", bet.bet_id);
-                        metrics::counter!("reconciliation_confirmed_total", 1);
+                        metrics::counter!("reconciliation_confirmed_total").increment(1);
                     } else {
                         // Transaction failed
                         sqlx::query!(
@@ -77,7 +77,7 @@ pub async fn reconcile_stuck_transactions(
                         .execute(db_pool)
                         .await?;
                         tracing::warn!("Bet {} failed on-chain", bet.bet_id);
-                        metrics::counter!("reconciliation_failed_total", 1);
+                        metrics::counter!("reconciliation_failed_total").increment(1);
                     }
                 }
                 _ => {
@@ -99,7 +99,7 @@ pub async fn reconcile_stuck_transactions(
                         .execute(db_pool)
                         .await?;
                     }
-                    metrics::counter!("reconciliation_not_found_total", 1);
+                    metrics::counter!("reconciliation_not_found_total").increment(1);
                 }
             }
         }

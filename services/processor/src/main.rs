@@ -1,14 +1,11 @@
 use anyhow::Result;
 use std::sync::Arc;
-use tokio::time::{interval, Duration};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use solana_sdk::signature::Signer;
 
 mod config;
-mod batch_processor;
 mod circuit_breaker;
 mod domain;
-mod reconciliation;
 mod retry_strategy;
 mod solana_client;
 mod solana_tx;
@@ -34,18 +31,6 @@ async fn main() -> Result<()> {
     let config = Config::load()?;
     tracing::info!("Configuration loaded: {} workers", config.processor.worker_count);
 
-    // Initialize database pool
-    let db_pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(config.database.pool_size)
-        .connect(&config.database.url)
-        .await?;
-    tracing::info!("Database connected");
-
-    // Initialize Redis connection
-    let redis_client = redis::Client::open(config.redis.url.clone())?;
-    let redis_conn = redis_client.get_connection_manager().await?;
-    tracing::info!("Redis connected");
-
     // Initialize Solana client pool
     let solana_client = Arc::new(
         solana_client::SolanaClientPool::new(
@@ -63,8 +48,6 @@ async fn main() -> Result<()> {
     // Initialize worker pool
     let worker_pool = Arc::new(WorkerPool::new(
         config.clone(),
-        db_pool.clone(),
-        redis_conn.clone(),
         solana_client.clone(),
         processor_keypair,
     ));
@@ -80,28 +63,6 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Start reconciliation job
-    let reconciliation_handle = tokio::spawn({
-        let config = config.clone();
-        let db_pool = db_pool.clone();
-        let solana_client = solana_client.clone();
-        async move {
-            let mut ticker = interval(Duration::from_secs(60));
-            loop {
-                ticker.tick().await;
-                if let Err(e) = reconciliation::reconcile_stuck_transactions(
-                    &db_pool,
-                    solana_client.as_ref(),
-                    config.processor.max_stuck_time_seconds,
-                )
-                .await
-                {
-                    tracing::error!("Reconciliation error: {:?}", e);
-                }
-            }
-        }
-    });
-
     tracing::info!("External Processor running");
 
     // Wait for shutdown signal
@@ -111,7 +72,6 @@ async fn main() -> Result<()> {
     // Graceful shutdown
     worker_pool.stop().await;
     worker_handle.abort();
-    reconciliation_handle.abort();
     metrics_handle.abort();
 
     tracing::info!("External Processor stopped");

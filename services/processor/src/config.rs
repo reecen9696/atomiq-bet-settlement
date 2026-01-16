@@ -4,9 +4,8 @@ use std::env;
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     pub processor: ProcessorConfig,
-    pub database: DatabaseConfig,
-    pub redis: RedisConfig,
     pub solana: SolanaConfig,
+    pub backend: BackendConfig,
     pub metrics_port: u16,
 }
 
@@ -21,14 +20,8 @@ pub struct ProcessorConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct DatabaseConfig {
-    pub url: String,
-    pub pool_size: u32,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct RedisConfig {
-    pub url: String,
+pub struct BackendConfig {
+    pub api_base_url: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -65,22 +58,16 @@ impl Config {
                     .unwrap_or_else(|_| "120".to_string())
                     .parse()?,
             },
-            database: DatabaseConfig {
-                url: env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
-                pool_size: env::var("DATABASE_POOL_SIZE")
-                    .unwrap_or_else(|_| "20".to_string())
-                    .parse()?,
-            },
-            redis: RedisConfig {
-                url: env::var("REDIS_URL")
-                    .unwrap_or_else(|_| "redis://localhost:6379".to_string()),
-            },
             solana: SolanaConfig {
                 rpc_urls: vec![rpc_primary, rpc_fallback],
                 commitment: env::var("SOLANA_COMMITMENT")
                     .unwrap_or_else(|_| "confirmed".to_string()),
                 vault_program_id: env::var("VAULT_PROGRAM_ID")
                     .expect("VAULT_PROGRAM_ID must be set"),
+            },
+            backend: BackendConfig {
+                api_base_url: env::var("BACKEND_API_URL")
+                    .unwrap_or_else(|_| "http://localhost:3001".to_string()),
             },
             metrics_port: env::var("PROCESSOR_METRICS_PORT")
                 .unwrap_or_else(|_| "9091".to_string())

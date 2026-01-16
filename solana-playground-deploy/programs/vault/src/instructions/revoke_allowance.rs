@@ -9,7 +9,7 @@ pub struct RevokeAllowance<'info> {
             b"allowance",
             user.key().as_ref(),
             allowance.casino.as_ref(),
-            &allowance.created_at.to_le_bytes()
+            &allowance.nonce.to_le_bytes()
         ],
         bump = allowance.bump,
         constraint = allowance.user == user.key()

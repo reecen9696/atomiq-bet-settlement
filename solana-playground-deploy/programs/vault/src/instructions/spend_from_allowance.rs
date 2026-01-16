@@ -32,7 +32,7 @@ pub struct SpendFromAllowance<'info> {
             b"allowance",
             allowance.user.as_ref(),
             casino.key().as_ref(),
-            &allowance.created_at.to_le_bytes()
+            &allowance.nonce.to_le_bytes()
         ],
         bump = allowance.bump,
         constraint = allowance.user == vault.owner @ VaultError::InvalidAllowancePDA
@@ -49,16 +49,16 @@ pub struct SpendFromAllowance<'info> {
     )]
     pub processed_bet: Account<'info, ProcessedBet>,
 
-    /// Casino vault (for native SOL) - required for SOL transfers
+    /// Casino vault (for SOL) or vault authority (for SPL signing)
     #[account(mut)]
-    /// CHECK: Casino vault PDA for SOL transfers
+    /// CHECK: Either casino vault PDA for SOL or vault authority for SPL
     pub casino_vault: UncheckedAccount<'info>,
 
-    /// Optional: User's token account (for SPL) - user owns this
+    /// Optional: User's token account (for SPL)
     #[account(mut)]
     pub user_token_account: Option<Account<'info, TokenAccount>>,
 
-    /// Optional: Casino's token account (for SPL) - casino owns this
+    /// Optional: Casino's token account (for SPL)
     #[account(mut)]
     pub casino_token_account: Option<Account<'info, TokenAccount>>,
 

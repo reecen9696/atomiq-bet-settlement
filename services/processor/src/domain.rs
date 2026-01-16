@@ -2,8 +2,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq)]
-#[sqlx(type_name = "bet_status", rename_all = "snake_case")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum BetStatus {
     Pending,
     Batched,
@@ -36,8 +36,8 @@ pub struct Bet {
     pub won: Option<bool>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
-#[sqlx(type_name = "batch_status", rename_all = "lowercase")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum BatchStatus {
     Created,
     Submitted,
@@ -76,4 +76,29 @@ impl Batch {
             last_error_message: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BetResult {
+    pub bet_id: Uuid,
+    pub status: BetStatus,
+    pub solana_tx_id: Option<String>,
+    pub error_message: Option<String>,
+    pub won: Option<bool>,
+    pub payout_amount: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateBatchRequest {
+    pub status: BatchStatus,
+    pub solana_tx_id: Option<String>,
+    pub bet_results: Vec<BetResult>,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingBetsResponse {
+    pub batch_id: Uuid,
+    pub processor_id: String,
+    pub bets: Vec<Bet>,
 }

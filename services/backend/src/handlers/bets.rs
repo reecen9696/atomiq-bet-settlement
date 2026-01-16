@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::{
     domain::{Bet, CreateBetRequest},
     errors::{AppError, Result},
-    repository::{bet_repository::BetRepository, PostgresBetRepository},
+    repository::{bet_repository::BetRepository, RedisBetRepository},
     state::AppState,
 };
 
@@ -17,6 +17,7 @@ use crate::{
 pub struct ListBetsQuery {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    pub user_wallet: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -43,7 +44,7 @@ pub async fn create_bet(
         ));
     }
 
-    let repo = PostgresBetRepository::new(state.db.clone());
+    let repo = RedisBetRepository::new(state.redis.clone());
     let bet = repo.create(&user_wallet, vault_address, req).await?;
 
     // Publish to Redis stream for processor to pick up immediately
@@ -58,7 +59,7 @@ pub async fn create_bet(
         .map_err(|e| AppError::Internal(anyhow::anyhow!("Redis publish failed: {}", e)))?;
 
     tracing::info!("Published bet {} to Redis stream", bet.bet_id);
-    metrics::counter!("bets_created_total", 1);
+    metrics::counter!("bets_created_total").increment(1);
 
     Ok(Json(CreateBetResponse { bet }))
 }
@@ -67,7 +68,7 @@ pub async fn get_bet(
     State(state): State<AppState>,
     Path(bet_id): Path<Uuid>,
 ) -> Result<Json<Bet>> {
-    let repo = PostgresBetRepository::new(state.db.clone());
+    let repo = RedisBetRepository::new(state.redis.clone());
     let bet = repo
         .find_by_id(bet_id)
         .await?
@@ -80,14 +81,16 @@ pub async fn list_user_bets(
     State(state): State<AppState>,
     Query(query): Query<ListBetsQuery>,
 ) -> Result<Json<Vec<Bet>>> {
-    // TODO: Extract user_wallet from authentication
-    let user_wallet = "TEMP_WALLET_ADDRESS";
+    // TODO: Extract user_wallet from authentication. For POC, allow query override.
+    let user_wallet = query
+        .user_wallet
+        .unwrap_or_else(|| "TEMP_WALLET_ADDRESS".to_string());
 
     let limit = query.limit.unwrap_or(20).min(100);
     let offset = query.offset.unwrap_or(0);
 
-    let repo = PostgresBetRepository::new(state.db.clone());
-    let bets = repo.find_by_user(user_wallet, limit, offset).await?;
+    let repo = RedisBetRepository::new(state.redis.clone());
+    let bets = repo.find_by_user(&user_wallet, limit, offset).await?;
 
     Ok(Json(bets))
 }

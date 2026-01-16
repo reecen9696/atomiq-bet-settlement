@@ -36,14 +36,6 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::load()?;
     tracing::info!("Configuration loaded");
 
-    // Initialize database pool
-    let db_pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(config.database.pool_size)
-        .connect(&config.database.url)
-        .await?;
-
-    tracing::info!("Database connected");
-
     // Initialize Redis connection
     let redis_client = redis::Client::open(config.redis.url.clone())?;
     let redis_conn = redis_client
@@ -53,7 +45,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Redis connected");
 
     // Initialize application state
-    let app_state = AppState::new(config.clone(), db_pool, redis_conn);
+    let app_state = AppState::new(config.clone(), redis_conn);
 
     // Build router
     let app = Router::new()

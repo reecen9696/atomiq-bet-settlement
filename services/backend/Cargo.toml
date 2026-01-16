@@ -14,9 +14,6 @@ tower-http = { version = "0.5", features = ["cors", "trace"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-# Database
-sqlx = { workspace = true }
-
 # Redis
 redis = { workspace = true }
 
@@ -48,7 +45,7 @@ chrono = { workspace = true }
 async-trait = "0.1"
 
 # Metrics
-metrics = "0.21"
+metrics = "0.22"
 metrics-exporter-prometheus = "0.13"
 
 [dev-dependencies]

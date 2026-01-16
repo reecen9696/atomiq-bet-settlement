@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+declare_id!("HoWjrEKiWKjEvqtdMDAHS9PEwkHQbVp2t6vYuDv3mdi4");
 
 pub mod state;
 pub mod instructions;
@@ -44,6 +44,17 @@ pub mod vault {
         token_mint: Pubkey,
     ) -> Result<()> {
         instructions::approve_allowance::handler(ctx, amount, duration_seconds, token_mint)
+    }
+
+    /// Approve spending allowance (nonce-based PDA; deterministic for clients)
+    pub fn approve_allowance_v2(
+        ctx: Context<ApproveAllowanceV2>,
+        amount: u64,
+        duration_seconds: i64,
+        token_mint: Pubkey,
+        nonce: u64,
+    ) -> Result<()> {
+        instructions::approve_allowance_v2::handler(ctx, amount, duration_seconds, token_mint, nonce)
     }
 
     /// Revoke an active allowance

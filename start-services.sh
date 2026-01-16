@@ -13,7 +13,7 @@ echo ""
 # Start backend
 echo "Starting backend..."
 cd services/backend
-RUST_LOG=backend=info,sqlx=warn cargo run >> ../../logs/backend.log 2>&1 &
+RUST_LOG=backend=info cargo run >> ../../logs/backend.log 2>&1 &
 BACKEND_PID=$!
 cd ../..
 echo "✅ Backend started (PID: $BACKEND_PID)"
@@ -24,7 +24,7 @@ sleep 2
 # Start processor
 echo "Starting processor..."
 cd services/processor
-RUST_LOG=processor=info,sqlx=warn cargo run >> ../../logs/processor.log 2>&1 &
+RUST_LOG=processor=info cargo run >> ../../logs/processor.log 2>&1 &
 PROCESSOR_PID=$!
 cd ../..
 echo "✅ Processor started (PID: $PROCESSOR_PID)"

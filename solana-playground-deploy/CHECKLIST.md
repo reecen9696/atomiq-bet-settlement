@@ -1,38 +1,30 @@
-# Deployment Checklist ✅
+# Deployment Checklist
 
-## Pre-deployment Verification
-- [x] Fixed smart contract code in place
-- [x] New error types added (MissingTokenAccount, MissingTokenDelegation)  
-- [x] Helper functions implemented (handle_sol_transfer, handle_wrapped_sol_transfer, handle_spl_transfer)
-- [x] All files present in deployment folder
-- [x] README with deployment instructions created
+## Program source completeness (nonce-based allowances)
+- [ ] `programs/vault/src/state.rs` contains `AllowanceNonceRegistry`
+- [ ] `programs/vault/src/errors.rs` contains `InvalidAllowanceNonce`
+- [ ] `programs/vault/src/instructions/approve_allowance_v2.rs` exists
+- [ ] `programs/vault/src/instructions/mod.rs` exports `approve_allowance_v2`
+- [ ] `programs/vault/src/lib.rs` exposes `approve_allowance_v2`
 
-## Core Problem FIXED ✅
-**Original Issue**: Line 145 in spend_from_allowance.rs
-```rust
-// OLD (BROKEN):
-require!(user_token.owner == vault.key(), VaultError::InvalidTokenAccountOwner);
+## Backwards compatibility checks
+- [ ] `programs/vault/src/instructions/revoke_allowance.rs` validates allowance PDA using `allowance.nonce`
+- [ ] `programs/vault/src/instructions/spend_from_allowance.rs` validates allowance PDA using `allowance.nonce`
 
-// NEW (FIXED):
-let has_delegation = user_token.delegate.is_some() && 
-                    user_token.delegate.unwrap() == vault.key() &&
-                    user_token.delegated_amount >= amount;
-let vault_owned = user_token.owner == vault.key();
-require!(has_delegation || vault_owned, VaultError::InvalidTokenAccountOwner);
-```
+## Wrapped SOL checks
+- [ ] `MissingTokenDelegation` / `MissingTokenAccount` errors exist
+- [ ] Wrapped SOL path supports user-owned token accounts with delegation
 
-## Next Steps for User:
-1. Upload [solana-playground-deploy](solana-playground-deploy) folder to Solana Playground
-2. Build and deploy: `anchor build && anchor deploy --provider.cluster devnet`
-3. Note the new Program ID from deployment output  
-4. Update backend services with new Program ID
-5. Test native SOL betting (primary focus)
-6. Test wrapped SOL betting (should now work!)
+## Deployment steps (Playground / devnet)
+- [ ] Upload/open this entire folder in Solana Playground
+- [ ] Build + deploy to devnet
+- [ ] Copy the Program ID
+- [ ] Update `VITE_VAULT_PROGRAM_ID` in your UI
+- [ ] Update backend/processor Program ID and restart
 
-## Expected Results:
-- ✅ Native SOL betting continues working
-- ✅ Wrapped SOL betting now works (was failing before)
-- ✅ Clear error messages for delegation issues
-- ✅ Support for multiple token ownership patterns
-
-The smart contract is now ready for deployment! 🚀
+## Post-deploy sanity
+- [ ] Initialize casino PDA once
+- [ ] Initialize a user vault
+- [ ] Deposit SOL
+- [ ] Approve allowance (UI uses `approve_allowance_v2`)
+- [ ] Place a bet and confirm the processor can spend from allowance

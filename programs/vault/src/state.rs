@@ -116,6 +116,27 @@ impl Allowance {
     }
 }
 
+/// Per-user-per-casino nonce registry for deterministic allowance PDA creation
+#[account]
+pub struct AllowanceNonceRegistry {
+    /// User who owns the allowances
+    pub user: Pubkey,
+    /// Casino this registry is for
+    pub casino: Pubkey,
+    /// Next nonce to use when creating an allowance PDA
+    pub next_nonce: u64,
+    /// Bump seed
+    pub bump: u8,
+}
+
+impl AllowanceNonceRegistry {
+    pub const LEN: usize = 8 + // discriminator
+        32 + // user
+        32 + // casino
+        8 + // next_nonce
+        1; // bump
+}
+
 /// Rate limiter for allowance approvals
 #[account]
 pub struct RateLimiter {

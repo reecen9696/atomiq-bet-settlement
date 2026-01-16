@@ -73,8 +73,8 @@ impl BatchProcessor {
             updated_bets.len()
         );
 
-        metrics::counter!("batches_created_total", 1);
-        metrics::gauge!("bets_per_batch", updated_bets.len() as f64);
+        metrics::counter!("batches_created_total").increment(1);
+        metrics::gauge!("bets_per_batch").set(updated_bets.len() as f64);
 
         Ok((batch, updated_bets))
     }
@@ -175,7 +175,7 @@ impl BatchProcessor {
         tx.commit().await?;
 
         tracing::info!("Batch {} confirmed and completed", batch_id);
-        metrics::counter!("batches_completed_total", 1);
+        metrics::counter!("batches_completed_total").increment(1);
 
         Ok(())
     }
@@ -227,7 +227,7 @@ impl BatchProcessor {
         tx.commit().await?;
 
         tracing::warn!("Batch {} failed: {}", batch_id, error_message);
-        metrics::counter!("batches_failed_total", 1);
+        metrics::counter!("batches_failed_total").increment(1);
 
         Ok(())
     }

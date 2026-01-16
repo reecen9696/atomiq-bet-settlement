@@ -2,33 +2,42 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
+use redis::AsyncCommands;
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
-    domain::{Bet, UpdateBatchRequest},
+    domain::{PendingBetsResponse, UpdateBatchRequest},
     errors::{AppError, Result},
-    repository::{bet_repository::BetRepository, PostgresBetRepository},
+    repository::{bet_repository::BetRepository, RedisBetRepository},
     state::AppState,
 };
 
 #[derive(Debug, Deserialize)]
 pub struct PendingBetsQuery {
     pub limit: Option<i64>,
+    pub processor_id: Option<String>,
 }
 
 pub async fn get_pending_bets(
     State(state): State<AppState>,
     Query(query): Query<PendingBetsQuery>,
-) -> Result<Json<Vec<Bet>>> {
+) -> Result<Json<PendingBetsResponse>> {
     let limit = query.limit.unwrap_or(100).min(500);
+    let processor_id = query
+        .processor_id
+        .unwrap_or_else(|| "processor-unknown".to_string());
 
-    let repo = PostgresBetRepository::new(state.db.clone());
-    let bets = repo.find_pending(limit).await?;
+    let repo = RedisBetRepository::new(state.redis.clone());
+    let (batch_id, bets) = repo.claim_pending(limit, &processor_id).await?;
 
-    metrics::gauge!("pending_bets_count", bets.len() as f64);
+    metrics::gauge!("pending_bets_count").set(bets.len() as f64);
 
-    Ok(Json(bets))
+    Ok(Json(PendingBetsResponse {
+        batch_id,
+        processor_id,
+        bets,
+    }))
 }
 
 pub async fn update_batch(
@@ -38,34 +47,26 @@ pub async fn update_batch(
 ) -> Result<Json<serde_json::Value>> {
     tracing::info!("Batch {} update received: {:?}", batch_id, req.status);
 
-    // Update batch status in database
-    let batch_status_str = match req.status {
-        crate::domain::BatchStatus::Created => "created",
-        crate::domain::BatchStatus::Submitted => "submitted",
-        crate::domain::BatchStatus::Confirmed => "confirmed",
-        crate::domain::BatchStatus::Failed => "failed",
-    };
-
-    sqlx::query!(
-        r#"
-        UPDATE batches
-        SET status = $2::batch_status,
-            solana_tx_id = COALESCE($3, solana_tx_id),
-            last_error_message = $4
-        WHERE batch_id = $1
-        "#,
-        batch_id,
-        batch_status_str as _,
-        req.solana_tx_id.as_deref(),
-        req.error_message.as_deref()
-    )
-    .execute(&state.db)
-    .await
-    .map_err(|e| anyhow::anyhow!("Failed to update batch: {}", e))
-    .map_err(AppError::Internal)?;
+    // Store batch summary in Redis (best-effort)
+    {
+        let mut redis_conn = state.redis.clone();
+        let batch_key = format!("batch:{}", batch_id);
+        let _: () = redis_conn
+            .hset_multiple(
+                &batch_key,
+                &[
+                    ("status", format!("{:?}", req.status).to_lowercase()),
+                    ("solana_tx_id", req.solana_tx_id.clone().unwrap_or_default()),
+                    ("last_error_message", req.error_message.clone().unwrap_or_default()),
+                    ("updated_at_ms", chrono::Utc::now().timestamp_millis().to_string()),
+                ],
+            )
+            .await
+            .map_err(AppError::Redis)?;
+    }
 
     // Update individual bet statuses
-    let repo = PostgresBetRepository::new(state.db.clone());
+    let repo = RedisBetRepository::new(state.redis.clone());
     let mut updated_count = 0;
     let mut error_count = 0;
 
@@ -77,6 +78,15 @@ pub async fn update_batch(
             .await
         {
             Ok(_) => {
+                // Optional result fields (POC: store for UI/status queries)
+                let _ = repo
+                    .update_bet_fields(
+                        bet_id,
+                        bet_result.won,
+                        bet_result.payout_amount,
+                        bet_result.error_message,
+                    )
+                    .await;
                 updated_count += 1;
                 tracing::debug!("Updated bet {} to {:?}", bet_id, status);
             }
@@ -94,8 +104,8 @@ pub async fn update_batch(
         error_count
     );
 
-    metrics::counter!("batches_processed_total", 1);
-    metrics::counter!("bets_updated_total", updated_count as u64);
+    metrics::counter!("batches_processed_total").increment(1);
+    metrics::counter!("bets_updated_total").increment(updated_count as u64);
 
     Ok(Json(serde_json::json!({
         "success": true,
