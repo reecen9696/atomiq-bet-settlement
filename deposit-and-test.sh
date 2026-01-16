@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let user_bytes: Vec<u8> = serde_json::from_str(&user_json)?;
     let user = Keypair::from_bytes(&user_bytes)?;
     
-    let program_id = Pubkey::from_str("HoWjrEKiWKjEvqtdMDAHS9PEwkHQbVp2t6vYuDv3mdi4")?;
+    let program_id = Pubkey::from_str("Cek6v3J44BS6mpoUGjSqTeCUgTViUzpQKkMLcuiZsoxL")?;
     let client = RpcClient::new_with_commitment(
         "https://api.devnet.solana.com".to_string(),
         CommitmentConfig::confirmed(),

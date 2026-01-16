@@ -37,7 +37,7 @@ Create a `.env` file in the `test-ui` directory:
 VITE_PRIVY_APP_ID=your_privy_app_id_here
 VITE_API_BASE_URL=http://localhost:3001
 VITE_SOLANA_RPC_URL=https://api.devnet.solana.com
-VITE_VAULT_PROGRAM_ID=HoWjrEKiWKjEvqtdMDAHS9PEwkHQbVp2t6vYuDv3mdi4
+VITE_VAULT_PROGRAM_ID=Cek6v3J44BS6mpoUGjSqTeCUgTViUzpQKkMLcuiZsoxL
 VITE_SOLANA_NETWORK=devnet
 ```
 

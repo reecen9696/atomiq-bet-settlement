@@ -106,6 +106,18 @@ export type VaultAccountState = {
   lastActivity: bigint;
 };
 
+export type CasinoAccountState = {
+  authority: string;
+  processor: string;
+  treasury: string;
+  bump: number;
+  vaultAuthorityBump: number;
+  paused: boolean;
+  totalBets: bigint;
+  totalVolumeLamports: bigint;
+  createdAt: bigint;
+};
+
 export type AllowanceAccountState = {
   user: string;
   casino: string;
@@ -159,6 +171,48 @@ function parseVaultAccount(data: Buffer): VaultAccountState {
     solBalanceLamports,
     createdAt,
     lastActivity,
+  };
+}
+
+function parseCasinoAccount(data: Buffer): CasinoAccountState {
+  // Anchor account layout: 8-byte discriminator + fields.
+  // Casino fields:
+  // authority(32) processor(32) treasury(32) bump(u8) vault_authority_bump(u8)
+  // paused(bool) total_bets(u64) total_volume(u64) created_at(i64)
+  const minLen = 8 + 32 + 32 + 32 + 1 + 1 + 1 + 8 + 8 + 8;
+  if (data.length < minLen) {
+    throw new Error(`Casino account data too small: ${data.length} bytes`);
+  }
+
+  let off = 8;
+  const authority = readPubkey(data, off);
+  off += 32;
+  const processor = readPubkey(data, off);
+  off += 32;
+  const treasury = readPubkey(data, off);
+  off += 32;
+  const bump = data.readUInt8(off);
+  off += 1;
+  const vaultAuthorityBump = data.readUInt8(off);
+  off += 1;
+  const paused = data.readUInt8(off) !== 0;
+  off += 1;
+  const totalBets = data.readBigUInt64LE(off);
+  off += 8;
+  const totalVolumeLamports = data.readBigUInt64LE(off);
+  off += 8;
+  const createdAt = data.readBigInt64LE(off);
+
+  return {
+    authority: authority.toBase58(),
+    processor: processor.toBase58(),
+    treasury: treasury.toBase58(),
+    bump,
+    vaultAuthorityBump,
+    paused,
+    totalBets,
+    totalVolumeLamports,
+    createdAt,
   };
 }
 
@@ -669,9 +723,45 @@ export class SolanaService {
     };
   }
 
+  async getCasinoInfoByAddress(
+    address: string,
+    connection?: Connection
+  ): Promise<{
+    exists: boolean;
+    address: string;
+    lamports: number | null;
+    state: CasinoAccountState | null;
+  }> {
+    const conn = connection ?? this.connection;
+    const info = await withRateLimitRetry(() => conn.getAccountInfo(new PublicKey(address), 'confirmed'));
+    if (!info) {
+      return { exists: false, address, lamports: null, state: null };
+    }
+
+    const data = Buffer.from(info.data);
+    const state = parseCasinoAccount(data);
+    return {
+      exists: true,
+      address,
+      lamports: info.lamports,
+      state,
+    };
+  }
+
+  async getCasinoInfo(connection?: Connection): Promise<{
+    exists: boolean;
+    address: string;
+    lamports: number | null;
+    state: CasinoAccountState | null;
+  }> {
+    const casinoPda = await this.deriveCasinoPDA();
+    return this.getCasinoInfoByAddress(casinoPda, connection);
+  }
+
   async initializeCasinoVault(params: {
     authority: PublicKey;
     sendTransaction: SendTransactionFn;
+    signTransaction?: SignTransactionFn;
     connection?: Connection;
   }): Promise<{ signature: string; casinoPda: string; vaultAuthorityPda: string }> {
     const connection = params.connection ?? this.connection;
@@ -694,13 +784,16 @@ export class SolanaService {
     const tx = new Transaction().add(ix);
     tx.feePayer = params.authority;
 
-    const signature = await sendAndConfirm(connection, params.sendTransaction, tx);
+    const signature = params.signTransaction
+      ? await signSendAndConfirm(connection, params.signTransaction, tx)
+      : await sendAndConfirm(connection, params.sendTransaction, tx);
     return { signature, casinoPda, vaultAuthorityPda };
   }
 
   async initializeUserVault(params: {
     user: PublicKey;
     sendTransaction: SendTransactionFn;
+    signTransaction?: SignTransactionFn;
     connection?: Connection;
   }): Promise<{ signature: string; vaultPda: string; casinoPda: string }> {
     const connection = params.connection ?? this.connection;
@@ -723,7 +816,9 @@ export class SolanaService {
     const tx = new Transaction().add(ix);
     tx.feePayer = params.user;
 
-    const signature = await sendAndConfirm(connection, params.sendTransaction, tx);
+    const signature = params.signTransaction
+      ? await signSendAndConfirm(connection, params.signTransaction, tx)
+      : await sendAndConfirm(connection, params.sendTransaction, tx);
     return { signature, vaultPda, casinoPda };
   }
 
@@ -731,6 +826,7 @@ export class SolanaService {
     user: PublicKey;
     amountLamports: bigint;
     sendTransaction: SendTransactionFn;
+    signTransaction?: SignTransactionFn;
     connection?: Connection;
   }): Promise<{ signature: string; vaultPda: string }> {
     const connection = params.connection ?? this.connection;
@@ -752,7 +848,9 @@ export class SolanaService {
 
     const tx = new Transaction().add(ix);
     tx.feePayer = params.user;
-    const signature = await sendAndConfirm(connection, params.sendTransaction, tx);
+    const signature = params.signTransaction
+      ? await signSendAndConfirm(connection, params.signTransaction, tx)
+      : await sendAndConfirm(connection, params.sendTransaction, tx);
     return { signature, vaultPda };
   }
 
@@ -760,6 +858,7 @@ export class SolanaService {
     user: PublicKey;
     amountLamports: bigint;
     sendTransaction: SendTransactionFn;
+    signTransaction?: SignTransactionFn;
     connection?: Connection;
   }): Promise<{ signature: string; vaultPda: string }> {
     const connection = params.connection ?? this.connection;
@@ -781,7 +880,9 @@ export class SolanaService {
 
     const tx = new Transaction().add(ix);
     tx.feePayer = params.user;
-    const signature = await sendAndConfirm(connection, params.sendTransaction, tx);
+    const signature = params.signTransaction
+      ? await signSendAndConfirm(connection, params.signTransaction, tx)
+      : await sendAndConfirm(connection, params.sendTransaction, tx);
     return { signature, vaultPda };
   }
 
@@ -854,6 +955,7 @@ export class SolanaService {
     user: PublicKey;
     allowancePda: PublicKey;
     sendTransaction: SendTransactionFn;
+    signTransaction?: SignTransactionFn;
     connection?: Connection;
   }): Promise<{ signature: string }> {
     const connection = params.connection ?? this.connection;
@@ -870,7 +972,9 @@ export class SolanaService {
 
     const tx = new Transaction().add(ix);
     tx.feePayer = params.user;
-    const signature = await sendAndConfirm(connection, params.sendTransaction, tx);
+    const signature = params.signTransaction
+      ? await signSendAndConfirm(connection, params.signTransaction, tx)
+      : await sendAndConfirm(connection, params.sendTransaction, tx);
     return { signature };
   }
 

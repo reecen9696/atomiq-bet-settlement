@@ -3,7 +3,7 @@ import { Program } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram, Keypair } from "@solana/web3.js";
 import fs from "fs";
 
-const PROGRAM_ID = new PublicKey("HoWjrEKiWKjEvqtdMDAHS9PEwkHQbVp2t6vYuDv3mdi4");
+const PROGRAM_ID = new PublicKey("Cek6v3J44BS6mpoUGjSqTeCUgTViUzpQKkMLcuiZsoxL");
 
 async function main() {
   // Setup provider

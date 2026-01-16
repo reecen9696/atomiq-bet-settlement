@@ -67,6 +67,25 @@ impl SolanaClientPool {
         None
     }
 
+    /// Returns a healthy client when possible, but never returns `None` unless the pool is empty.
+    ///
+    /// Rationale: public devnet RPCs can transiently fail health checks (e.g. 429/rate limits),
+    /// which would otherwise stall the entire processor with "No healthy RPC clients available".
+    pub async fn get_healthy_client_or_any(&self) -> Option<Arc<RpcClient>> {
+        if let Some(c) = self.get_healthy_client().await {
+            return Some(c);
+        }
+
+        if self.clients.is_empty() {
+            return None;
+        }
+
+        tracing::warn!(
+            "No healthy RPC clients available; falling back to round-robin client selection"
+        );
+        Some(self.get_client().await)
+    }
+
     pub async fn mark_unhealthy(&self, client_url: &str) {
         for client in &self.clients {
             if client.url == client_url {

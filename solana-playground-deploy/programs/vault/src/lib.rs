@@ -1,13 +1,30 @@
 use anchor_lang::prelude::*;
 
-declare_id!("HoWjrEKiWKjEvqtdMDAHS9PEwkHQbVp2t6vYuDv3mdi4");
+declare_id!("Cek6v3J44BS6mpoUGjSqTeCUgTViUzpQKkMLcuiZsoxL");
 
 pub mod state;
 pub mod instructions;
 pub mod errors;
 pub mod validation;
 
-use instructions::*;
+// Solana Playground/Anchor macro compatibility:
+// Anchor's #[program] macro expects certain generated `__client_accounts_*` items
+// to be resolvable from the crate root. Our Accounts structs live under
+// `crate::instructions::*`, so re-export them here.
+pub use crate::instructions::*;
+
+use crate::instructions::approve_allowance::ApproveAllowance;
+use crate::instructions::approve_allowance_v2::ApproveAllowanceV2;
+use crate::instructions::deposit_sol::DepositSol;
+use crate::instructions::deposit_spl::DepositSpl;
+use crate::instructions::initialize_casino_vault::InitializeCasinoVault;
+use crate::instructions::initialize_vault::InitializeVault;
+use crate::instructions::pause_casino::{PauseCasino, UnpauseCasino};
+use crate::instructions::payout::Payout;
+use crate::instructions::revoke_allowance::RevokeAllowance;
+use crate::instructions::spend_from_allowance::SpendFromAllowance;
+use crate::instructions::withdraw_sol::WithdrawSol;
+use crate::instructions::withdraw_spl::WithdrawSpl;
 
 #[program]
 pub mod vault {

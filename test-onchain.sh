@@ -9,7 +9,7 @@ echo ""
 # Configuration
 USER_KEYPAIR="test-user-keypair.json"
 PROCESSOR_KEYPAIR="test-keypair.json"
-PROGRAM_ID="HoWjrEKiWKjEvqtdMDAHS9PEwkHQbVp2t6vYuDv3mdi4"
+PROGRAM_ID="Cek6v3J44BS6mpoUGjSqTeCUgTViUzpQKkMLcuiZsoxL"
 RPC_URL="https://api.devnet.solana.com"
 
 # Get wallet addresses

@@ -7,7 +7,7 @@ echo "🔧 Setting up Wrapped SOL for betting..."
 echo ""
 
 USER_KEYPAIR=/Users/reece/code/projects/atomik-wallet/test-user-keypair.json
-PROGRAM_ID=HoWjrEKiWKjEvqtdMDAHS9PEwkHQbVp2t6vYuDv3mdi4
+PROGRAM_ID=Cek6v3J44BS6mpoUGjSqTeCUgTViUzpQKkMLcuiZsoxL
 CASINO=AMySLNvUFp5avus8644r7CdVtjB3CVkWHfPaDu98Vtat
 RPC_URL=https://api.devnet.solana.com
 

@@ -69,6 +69,37 @@ impl RedisBetRepository {
         }
     }
 
+    fn max_retry_count() -> i32 {
+        std::env::var("BET_MAX_RETRIES")
+            .ok()
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(5)
+    }
+
+    fn retry_backoff_base_ms() -> i64 {
+        std::env::var("BET_RETRY_BACKOFF_BASE_MS")
+            .ok()
+            .and_then(|v| v.parse::<i64>().ok())
+            .unwrap_or(2_000)
+    }
+
+    fn retry_backoff_max_ms() -> i64 {
+        std::env::var("BET_RETRY_BACKOFF_MAX_MS")
+            .ok()
+            .and_then(|v| v.parse::<i64>().ok())
+            .unwrap_or(60_000)
+    }
+
+    fn compute_backoff_ms(retry_count_after_increment: i32) -> i64 {
+        // Exponential backoff: base * 2^(n-1), capped.
+        let n = retry_count_after_increment.max(1) as u32;
+        let base = Self::retry_backoff_base_ms();
+        let max = Self::retry_backoff_max_ms();
+
+        let factor = 2_i64.saturating_pow(n.saturating_sub(1));
+        (base.saturating_mul(factor)).min(max)
+    }
+
     async fn load_bet_from_hash(&self, bet_id: Uuid) -> Result<Option<Bet>> {
         let mut redis_conn = self.redis.clone();
         let key = Self::bet_key(bet_id);
@@ -114,6 +145,7 @@ impl RedisBetRepository {
             created_at,
             user_wallet: map.get("user_wallet").cloned().unwrap_or_default(),
             vault_address: map.get("vault_address").cloned().unwrap_or_default(),
+            allowance_pda: map.get("allowance_pda").cloned().filter(|v| !v.is_empty()),
             casino_id: map.get("casino_id").cloned().filter(|v| !v.is_empty()),
             game_type: map.get("game_type").cloned().unwrap_or_else(|| "coinflip".to_string()),
             stake_amount: map
@@ -174,6 +206,7 @@ impl BetRepository for RedisBetRepository {
             created_at: now,
             user_wallet: user_wallet.to_string(),
             vault_address: vault_address.to_string(),
+            allowance_pda: req.allowance_pda.clone().filter(|v| !v.is_empty()),
             casino_id: None,
             game_type: "coinflip".to_string(),
             stake_amount: req.stake_amount as i64,
@@ -206,6 +239,7 @@ impl BetRepository for RedisBetRepository {
                     ("created_at_ms", now_ms.to_string()),
                     ("user_wallet", bet.user_wallet.clone()),
                     ("vault_address", bet.vault_address.clone()),
+                    ("allowance_pda", bet.allowance_pda.clone().unwrap_or_default()),
                     ("casino_id", "".to_string()),
                     ("game_type", bet.game_type.clone()),
                     ("stake_amount", bet.stake_amount.to_string()),
@@ -268,8 +302,10 @@ local processing = KEYS[2]
 local limit = tonumber(ARGV[1])
 local batch_id = ARGV[2]
 local processor_id = ARGV[3]
+local now_ms = tonumber(ARGV[4])
 
-local entries = redis.call('ZRANGE', claimable, 0, limit - 1, 'WITHSCORES')
+-- Claim only bets that are due (score <= now_ms). Score is treated as "available_at_ms".
+local entries = redis.call('ZRANGEBYSCORE', claimable, '-inf', now_ms, 'WITHSCORES', 'LIMIT', 0, limit)
 local claimed = {}
 
 for i = 1, #entries, 2 do
@@ -290,12 +326,14 @@ return claimed
 
         let mut redis_conn = self.redis.clone();
         let script = Script::new(CLAIM_LUA);
+        let now_ms = Utc::now().timestamp_millis();
         let claimed_ids: Vec<String> = script
             .key(Self::claimable_index_key())
             .key(Self::processing_index_key())
             .arg(limit)
             .arg(batch_id.to_string())
             .arg(processor_id)
+            .arg(now_ms)
             .invoke_async(&mut redis_conn)
             .await?;
 
@@ -314,6 +352,75 @@ return claimed
     async fn update_status(&self, bet_id: Uuid, status: BetStatus, solana_tx_id: Option<String>) -> Result<()> {
         let mut redis_conn = self.redis.clone();
         let bet_key = Self::bet_key(bet_id);
+
+                // Special handling: FailedRetryable implies retries + backoff and can graduate to manual review.
+                if matches!(status, BetStatus::FailedRetryable) {
+                        static FAIL_RETRYABLE_LUA: &str = r#"
+local bet_key = KEYS[1]
+local claimable = KEYS[2]
+local processing = KEYS[3]
+local bet_id = ARGV[1]
+local now_ms = tonumber(ARGV[2])
+local max_retries = tonumber(ARGV[3])
+local backoff_ms = tonumber(ARGV[4])
+
+local current_retry = tonumber(redis.call('HGET', bet_key, 'retry_count') or '0')
+local new_retry = current_retry + 1
+
+redis.call('HSET', bet_key,
+    'retry_count', tostring(new_retry),
+    'solana_tx_id', ''
+)
+
+-- If exceeded retry budget, stop retrying.
+if new_retry > max_retries then
+    redis.call('HSET', bet_key,
+        'status', 'failed_manual_review'
+    )
+    redis.call('ZREM', claimable, bet_id)
+    redis.call('ZREM', processing, bet_id)
+    return { 'failed_manual_review', tostring(new_retry) }
+end
+
+local next_attempt_at = now_ms + backoff_ms
+
+redis.call('HSET', bet_key,
+    'status', 'failed_retryable',
+    'next_attempt_at_ms', tostring(next_attempt_at)
+)
+
+redis.call('ZADD', claimable, next_attempt_at, bet_id)
+redis.call('ZREM', processing, bet_id)
+
+return { 'failed_retryable', tostring(new_retry) }
+"#;
+
+                        let now_ms = Utc::now().timestamp_millis();
+                        let max_retries = Self::max_retry_count();
+
+                        // We base the backoff on the *next* retry count (after increment).
+                        // Compute a conservative backoff using the current retry_count if present.
+                        // If missing, treat as first retry.
+                        let current_retry: i32 = redis_conn
+                                .hget(&bet_key, "retry_count")
+                                .await
+                                .unwrap_or(0);
+                        let backoff_ms = Self::compute_backoff_ms(current_retry.saturating_add(1));
+
+                        let script = Script::new(FAIL_RETRYABLE_LUA);
+                        let _: Vec<String> = script
+                                .key(&bet_key)
+                                .key(Self::claimable_index_key())
+                                .key(Self::processing_index_key())
+                                .arg(bet_id.to_string())
+                                .arg(now_ms)
+                                .arg(max_retries)
+                                .arg(backoff_ms)
+                                .invoke_async(&mut redis_conn)
+                                .await?;
+
+                        return Ok(());
+                }
 
         let status_str = Self::status_to_string(&status);
         let mut pipe = redis::pipe();

@@ -20,6 +20,7 @@ pub struct Bet {
     pub created_at: DateTime<Utc>,
     pub user_wallet: String,
     pub vault_address: String,
+    pub allowance_pda: Option<String>,
     pub casino_id: Option<String>,
     pub game_type: String,
     pub stake_amount: i64,

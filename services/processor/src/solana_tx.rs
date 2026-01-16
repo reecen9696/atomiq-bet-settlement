@@ -1,6 +1,7 @@
 use spl_associated_token_account::get_associated_token_address;
 use anyhow::{Context, Result};
 use solana_client::rpc_client::RpcClient;
+use solana_client::rpc_config::RpcSimulateTransactionConfig;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
@@ -17,16 +18,39 @@ use crate::domain::Bet;
 const SPL_TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID: &str = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 
+fn parse_allowance_nonce_registry_next_nonce(data: &[u8]) -> Option<u64> {
+    // Anchor accounts have an 8-byte discriminator prefix.
+    // Layout: discriminator (8) | user (32) | casino (32) | next_nonce (8) | bump (1)
+    let min_len = 8 + 32 + 32 + 8;
+    if data.len() < min_len {
+        return None;
+    }
+
+    let next_nonce_offset = 8 + 32 + 32;
+    let mut buf = [0u8; 8];
+    buf.copy_from_slice(&data[next_nonce_offset..next_nonce_offset + 8]);
+    Some(u64::from_le_bytes(buf))
+}
+
+fn allowance_account_exists(client: &RpcClient, allowance: &Pubkey) -> bool {
+    client.get_account(allowance).is_ok()
+}
+
 /// Build and submit a batch of bets to Solana
 pub async fn submit_batch_transaction(
     client: &RpcClient,
     bets: &[Bet],
     processor_keypair: &Keypair,
     vault_program_id: &Pubkey,
+    max_bets_per_tx: usize,
 ) -> Result<(String, Vec<(Uuid, bool, i64)>)> {
-    // For now, limit batch size to avoid compute limits
-    if bets.len() > 5 {
-        anyhow::bail!("Batch too large: {} bets (max 5)", bets.len());
+    // Limit batch size to avoid transaction size / compute limits.
+    if bets.len() > max_bets_per_tx {
+        anyhow::bail!(
+            "Batch too large: {} bets (max {})",
+            bets.len(),
+            max_bets_per_tx
+        );
     }
 
     // Simulate coinflip outcomes first
@@ -55,19 +79,36 @@ pub async fn submit_batch_transaction(
             vault_program_id,
         );
 
-        // Query for active allowance - derive dynamically instead of hardcoded
-        // For now we'll derive it based on user and current timestamp
-        // In production, this should be queried from database or chain
-        let allowance_timestamp = bet.created_at.timestamp();
-        let (allowance, _) = Pubkey::find_program_address(
-            &[
-                b"allowance",
-                user_pubkey.as_ref(),
-                casino_pda.as_ref(),
-                &allowance_timestamp.to_le_bytes(),
-            ],
-            vault_program_id,
-        );
+        // Allowance PDA must match the on-chain nonce-based PDA.
+        // Prefer the PDA provided by the backend/UI; otherwise derive the most recent allowance
+        // from the on-chain nonce registry.
+        let allowance = if let Some(pda_str) = bet.allowance_pda.as_ref().filter(|s| !s.is_empty()) {
+            let pda = Pubkey::from_str(pda_str).context("Invalid allowance_pda pubkey")?;
+            if allowance_account_exists(client, &pda) {
+                pda
+            } else {
+                tracing::warn!(
+                    "Bet {} allowance_pda {} missing on-chain; attempting nonce-registry fallback",
+                    bet.bet_id,
+                    pda
+                );
+                derive_latest_allowance_pda_from_nonce_registry(client, vault_program_id, &user_pubkey, &casino_pda)
+                    .with_context(|| {
+                        format!(
+                            "Allowance account not initialized (provided {}, no nonce-registry fallback) for bet {}",
+                            pda, bet.bet_id
+                        )
+                    })?
+            }
+        } else {
+            derive_latest_allowance_pda_from_nonce_registry(client, vault_program_id, &user_pubkey, &casino_pda)
+                .with_context(|| {
+                    format!(
+                        "Bet {} missing allowance_pda and no initialized allowance could be derived from nonce registry",
+                        bet.bet_id
+                    )
+                })?
+        };
         
         // Derive token accounts dynamically
         let wrapped_sol_mint = Pubkey::from_str("So11111111111111111111111111111111111111112")
@@ -147,6 +188,41 @@ pub async fn submit_batch_transaction(
         recent_blockhash,
     );
 
+    // Preflight simulation to capture full program logs on failure.
+    // This makes diagnosing Anchor constraint failures and CPI errors much easier.
+    let sim = client.simulate_transaction_with_config(
+        &transaction,
+        RpcSimulateTransactionConfig {
+            sig_verify: false,
+            replace_recent_blockhash: true,
+            commitment: None,
+            ..Default::default()
+        },
+    );
+    match sim {
+        Ok(resp) => {
+            if let Some(err) = resp.value.err {
+                if let Some(logs) = resp.value.logs {
+                    let trimmed: Vec<String> = logs.into_iter().take(25).collect();
+                    tracing::error!(
+                        "Preflight simulation failed ({} bets). Logs:\n{}",
+                        bets.len(),
+                        trimmed.join("\n")
+                    );
+                    anyhow::bail!(
+                        "Preflight simulation failed: {:?}\nLogs:\n{}",
+                        err,
+                        trimmed.join("\n")
+                    );
+                }
+                anyhow::bail!("Preflight simulation failed: {:?}", err);
+            }
+        }
+        Err(e) => {
+            tracing::warn!("Preflight simulation RPC error: {:#}", e);
+        }
+    }
+
     // Send and confirm transaction
     let signature = client
         .send_and_confirm_transaction(&transaction)
@@ -159,6 +235,43 @@ pub async fn submit_batch_transaction(
     );
 
     Ok((signature.to_string(), results))
+}
+
+fn derive_latest_allowance_pda_from_nonce_registry(
+    client: &RpcClient,
+    program_id: &Pubkey,
+    user: &Pubkey,
+    casino: &Pubkey,
+) -> Result<Pubkey> {
+    let (nonce_registry, _) = Pubkey::find_program_address(
+        &[b"allowance-nonce", user.as_ref(), casino.as_ref()],
+        program_id,
+    );
+
+    let acct = client
+        .get_account(&nonce_registry)
+        .with_context(|| format!("Nonce registry account {} not found", nonce_registry))?;
+    let next_nonce = parse_allowance_nonce_registry_next_nonce(&acct.data)
+        .context("Failed to parse nonce registry next_nonce")?;
+    if next_nonce == 0 {
+        anyhow::bail!("Nonce registry next_nonce is 0 (no allowance has been approved yet)");
+    }
+
+    let nonce = next_nonce - 1;
+    let (allowance, _) = Pubkey::find_program_address(
+        &[b"allowance", user.as_ref(), casino.as_ref(), &nonce.to_le_bytes()],
+        program_id,
+    );
+
+    if !allowance_account_exists(client, &allowance) {
+        anyhow::bail!(
+            "Derived allowance PDA {} for nonce {} is not initialized",
+            allowance,
+            nonce
+        );
+    }
+
+    Ok(allowance)
 }
 
 /// Derive casino PDA

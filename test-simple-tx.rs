@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
 
     // Program ID 
-    let program_id = Pubkey::from_str("HoWjrEKiWKjEvqtdMDAHS9PEwkHQbVp2t6vYuDv3mdi4")?;
+    let program_id = Pubkey::from_str("Cek6v3J44BS6mpoUGjSqTeCUgTViUzpQKkMLcuiZsoxL")?;
     
     // Load user keypair (we'll use a test one)
     let user_keypair = Keypair::new();

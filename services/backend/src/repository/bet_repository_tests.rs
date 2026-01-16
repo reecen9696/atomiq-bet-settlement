@@ -20,6 +20,9 @@ mod tests {
         let repo = PostgresBetRepository::new(pool.clone());
 
         let request = crate::domain::CreateBetRequest {
+            user_wallet: None,
+            vault_address: None,
+            allowance_pda: None,
             stake_amount: 100_000_000,
             stake_token: "SOL".to_string(),
             choice: "heads".to_string(),
@@ -55,6 +58,9 @@ mod tests {
         let repo = PostgresBetRepository::new(pool.clone());
 
         let request = crate::domain::CreateBetRequest {
+            user_wallet: None,
+            vault_address: None,
+            allowance_pda: None,
             stake_amount: 200_000_000,
             stake_token: "SOL".to_string(),
             choice: "tails".to_string(),
@@ -98,6 +104,9 @@ mod tests {
         let mut created_ids = Vec::new();
         for i in 0..3 {
             let request = crate::domain::CreateBetRequest {
+                user_wallet: None,
+                vault_address: None,
+                allowance_pda: None,
                 stake_amount: 100_000_000 * (i + 1) as u64,
                 stake_token: "SOL".to_string(),
                 choice: "heads".to_string(),
@@ -141,6 +150,9 @@ mod tests {
         let repo = PostgresBetRepository::new(pool.clone());
 
         let request = crate::domain::CreateBetRequest {
+            user_wallet: None,
+            vault_address: None,
+            allowance_pda: None,
             stake_amount: 100_000_000,
             stake_token: "SOL".to_string(),
             choice: "heads".to_string(),

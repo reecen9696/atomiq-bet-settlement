@@ -27,11 +27,26 @@ export function BettingInterface() {
 
     setError('');
     try {
+      const [vaultAddress, allowancePda] = await Promise.all([
+        solanaService.deriveVaultPDA(publicKey.toBase58()),
+        (async () => {
+          try {
+            const key = `atomik:lastAllowancePda:${publicKey.toBase58()}`;
+            const saved = localStorage.getItem(key);
+            return saved && saved.length > 20 ? saved : '';
+          } catch {
+            return '';
+          }
+        })(),
+      ]);
+
       const response = await createBet({
         stake_amount: Math.floor(amountNum * 1_000_000_000), // Convert to lamports
         stake_token: 'SOL',
         choice,
         user_wallet: publicKey.toBase58(),
+        vault_address: vaultAddress,
+        allowance_pda: allowancePda || undefined,
       });
 
       setLastBet(response.bet);

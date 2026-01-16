@@ -16,6 +16,12 @@ export function VaultManager() {
   const [vaultExists, setVaultExists] = useState<boolean | null>(null);
   const [casinoExists, setCasinoExists] = useState<boolean | null>(null);
 
+  const [casinoAuthority, setCasinoAuthority] = useState<string>('');
+  const [casinoProcessor, setCasinoProcessor] = useState<string>('');
+  const [casinoPaused, setCasinoPaused] = useState<boolean | null>(null);
+  const [casinoTotalBets, setCasinoTotalBets] = useState<bigint | null>(null);
+  const [casinoTotalVolumeLamports, setCasinoTotalVolumeLamports] = useState<bigint | null>(null);
+
   const [vaultLamports, setVaultLamports] = useState<number | null>(null);
   const [vaultTrackedLamports, setVaultTrackedLamports] = useState<bigint | null>(null);
   const [vaultLastActivity, setVaultLastActivity] = useState<bigint | null>(null);
@@ -64,6 +70,21 @@ export function VaultManager() {
           ]);
           setCasinoExists(casinoOk);
           setVaultExists(vaultOk);
+
+          if (casinoOk) {
+            const casinoInfo = await solanaService.getCasinoInfoByAddress(casino, connection);
+            setCasinoAuthority(casinoInfo.state?.authority ?? '');
+            setCasinoProcessor(casinoInfo.state?.processor ?? '');
+            setCasinoPaused(casinoInfo.state?.paused ?? null);
+            setCasinoTotalBets(casinoInfo.state?.totalBets ?? null);
+            setCasinoTotalVolumeLamports(casinoInfo.state?.totalVolumeLamports ?? null);
+          } else {
+            setCasinoAuthority('');
+            setCasinoProcessor('');
+            setCasinoPaused(null);
+            setCasinoTotalBets(null);
+            setCasinoTotalVolumeLamports(null);
+          }
 
           if (vaultOk) {
             const info = await solanaService.getVaultInfoByAddress(vault, connection);
@@ -153,6 +174,7 @@ export function VaultManager() {
       const { signature, casinoPda, vaultAuthorityPda } = await solanaService.initializeCasinoVault({
         authority: publicKey,
         sendTransaction,
+        signTransaction: signTransaction ?? undefined,
         connection,
       });
       setLastSignature(signature);
@@ -186,6 +208,7 @@ export function VaultManager() {
       const { signature, vaultPda } = await solanaService.initializeUserVault({
         user: publicKey,
         sendTransaction,
+        signTransaction: signTransaction ?? undefined,
         connection,
       });
       setLastSignature(signature);
@@ -222,6 +245,7 @@ export function VaultManager() {
         user: publicKey,
         amountLamports: amount,
         sendTransaction,
+        signTransaction: signTransaction ?? undefined,
         connection,
       });
       setLastSignature(signature);
@@ -256,6 +280,7 @@ export function VaultManager() {
         user: publicKey,
         amountLamports: amount,
         sendTransaction,
+        signTransaction: signTransaction ?? undefined,
         connection,
       });
       setLastSignature(signature);
@@ -347,6 +372,7 @@ export function VaultManager() {
         user: publicKey,
         allowancePda: new PublicKey(revokeAllowancePda),
         sendTransaction,
+        signTransaction: signTransaction ?? undefined,
         connection,
       });
       setLastSignature(signature);
@@ -448,6 +474,49 @@ export function VaultManager() {
                   <ExternalLink className="w-3 h-3 ml-1" />
                 </a>
               </div>
+
+              {casinoExists && (casinoAuthority || casinoProcessor || casinoPaused !== null) && (
+                <div className="mt-3 p-3 bg-white rounded border border-gray-200">
+                  <p className="text-xs font-semibold text-gray-700 mb-2">Casino State (on-chain)</p>
+                  <div className="space-y-1 text-xs">
+                    {casinoAuthority && (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-gray-500">Authority:</span>
+                        <span className="font-mono text-gray-800 break-all text-right">{casinoAuthority}</span>
+                      </div>
+                    )}
+                    {casinoProcessor && (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-gray-500">Processor:</span>
+                        <span className="font-mono text-gray-800 break-all text-right">{casinoProcessor}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500">Paused:</span>
+                      <span className="font-semibold text-gray-800">
+                        {casinoPaused === null ? '—' : casinoPaused ? 'Yes' : 'No'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500">Total bets:</span>
+                      <span className="font-mono text-gray-800">
+                        {casinoTotalBets === null ? '—' : casinoTotalBets.toString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500">Total volume:</span>
+                      <span className="font-mono text-gray-800">
+                        {casinoTotalVolumeLamports === null
+                          ? '—'
+                          : `${(Number(casinoTotalVolumeLamports) / 1_000_000_000).toFixed(6)} SOL`}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-[11px] text-gray-500">
+                    For full E2E bets, the running processor service must use the same “Processor” pubkey.
+                  </p>
+                </div>
+              )}
             </>
           ) : (
             <div className="flex items-center text-gray-500">

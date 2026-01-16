@@ -20,6 +20,7 @@ pub struct Bet {
     pub created_at: DateTime<Utc>,
     pub user_wallet: String,
     pub vault_address: String,
+    pub allowance_pda: Option<String>,
     pub casino_id: Option<String>,
     pub game_type: String,
     pub stake_amount: i64,
@@ -39,6 +40,8 @@ pub struct Bet {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateBetRequest {
     pub user_wallet: Option<String>,
+    pub vault_address: Option<String>,
+    pub allowance_pda: Option<String>,
     pub stake_amount: u64,
     pub stake_token: String,
     pub choice: String,

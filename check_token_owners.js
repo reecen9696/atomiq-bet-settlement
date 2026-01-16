@@ -19,7 +19,7 @@ async function checkTokenAccounts() {
     console.log('Expected user wallet:', userWallet.toBase58());
     
     // Casino PDA
-    const PROGRAM_ID = new PublicKey('HoWjrEKiWKjEvqtdMDAHS9PEwkHQbVp2t6vYuDv3mdi4');
+    const PROGRAM_ID = new PublicKey('Cek6v3J44BS6mpoUGjSqTeCUgTViUzpQKkMLcuiZsoxL');
     const [casinoPDA] = PublicKey.findProgramAddressSync([Buffer.from('casino')], PROGRAM_ID);
     console.log('Casino PDA:', casinoPDA.toBase58());
 }

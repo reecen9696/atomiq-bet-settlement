@@ -12,7 +12,7 @@ echo ""
 # Load wallet addresses
 PROCESSOR_WALLET=$(solana-keygen pubkey test-keypair.json)
 USER_WALLET=$(solana-keygen pubkey test-user-keypair.json)
-PROGRAM_ID="HoWjrEKiWKjEvqtdMDAHS9PEwkHQbVp2t6vYuDv3mdi4"
+PROGRAM_ID="Cek6v3J44BS6mpoUGjSqTeCUgTViUzpQKkMLcuiZsoxL"
 
 echo "📝 Program ID: $PROGRAM_ID"
 echo "🔑 Processor Wallet: $PROCESSOR_WALLET"
@@ -44,7 +44,7 @@ const userKeypair = Keypair.fromSecretKey(
   Uint8Array.from(JSON.parse(fs.readFileSync("test-user-keypair.json", "utf-8")))
 );
 
-const programId = new PublicKey("HoWjrEKiWKjEvqtdMDAHS9PEwkHQbVp2t6vYuDv3mdi4");
+const programId = new PublicKey("Cek6v3J44BS6mpoUGjSqTeCUgTViUzpQKkMLcuiZsoxL");
 const connection = new Connection("https://api.devnet.solana.com", "confirmed");
 
 async function main() {

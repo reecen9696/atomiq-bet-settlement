@@ -17,7 +17,7 @@ VITE_API_BASE_URL=http://localhost:3001
 
 # Solana Configuration
 VITE_SOLANA_RPC_URL=https://api.devnet.solana.com
-VITE_VAULT_PROGRAM_ID=HoWjrEKiWKjEvqtdMDAHS9PEwkHQbVp2t6vYuDv3mdi4
+VITE_VAULT_PROGRAM_ID=Cek6v3J44BS6mpoUGjSqTeCUgTViUzpQKkMLcuiZsoxL
 VITE_SOLANA_NETWORK=devnet
 EOF
     echo "✅ .env file created"

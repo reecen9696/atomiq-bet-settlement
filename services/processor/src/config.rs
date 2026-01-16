@@ -14,6 +14,7 @@ pub struct ProcessorConfig {
     pub worker_count: usize,
     pub batch_interval_seconds: u64,
     pub batch_size: usize,
+    pub max_bets_per_tx: usize,
     pub max_retries: u32,
     pub keypair_path: String,
     pub max_stuck_time_seconds: i64,
@@ -48,6 +49,9 @@ impl Config {
                     .parse()?,
                 batch_size: env::var("PROCESSOR_BATCH_SIZE")
                     .unwrap_or_else(|_| "100".to_string())
+                    .parse()?,
+                max_bets_per_tx: env::var("PROCESSOR_MAX_BETS_PER_TX")
+                    .unwrap_or_else(|_| "12".to_string())
                     .parse()?,
                 max_retries: env::var("PROCESSOR_MAX_RETRIES")
                     .unwrap_or_else(|_| "5".to_string())

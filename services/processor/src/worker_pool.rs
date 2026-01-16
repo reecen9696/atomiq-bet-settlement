@@ -156,11 +156,15 @@ impl Worker {
         let processor_id = format!("worker-{}", self.id);
         let url = format!("{}/api/external/bets/pending", self.backend_base_url);
 
+        // Claim up to batch_size from the backend, then split into multiple Solana transactions
+        // of at most max_bets_per_tx each.
+        let claim_limit = self.config.processor.batch_size;
+
         let resp: PendingBetsResponse = self
             .http
             .get(url)
             .query(&[
-                ("limit", self.config.processor.batch_size.to_string()),
+                ("limit", claim_limit.to_string()),
                 ("processor_id", processor_id.clone()),
             ])
             .send()
@@ -174,101 +178,113 @@ impl Worker {
         }
 
         tracing::info!(
-            "Worker {}: Processing {} pending bets",
+            "Worker {}: Processing {} pending bets (max {} per tx)",
             self.id,
-            resp.bets.len()
+            resp.bets.len(),
+            self.config.processor.max_bets_per_tx
         );
 
         metrics::gauge!("pending_bets_fetched").set(resp.bets.len() as f64);
 
         // Phase 2: Execute bets on Solana (simulate coinflip for POC)
-        let bet_results = self.execute_bets_on_solana(&resp.bets).await;
+        // Split into chunks so we don't exceed tx size/compute limits.
+        let max_per_tx = self.config.processor.max_bets_per_tx.max(1);
 
-        match bet_results {
-            Ok((signature, results)) => {
-                // Phase 3: Mark batch submitted
-                self.post_batch_update(
-                    resp.batch_id,
-                    UpdateBatchRequest {
-                        status: BatchStatus::Submitted,
-                        solana_tx_id: Some(signature.clone()),
-                        error_message: None,
-                        bet_results: resp
-                            .bets
-                            .iter()
-                            .map(|b| BetResult {
-                                bet_id: b.bet_id,
-                                status: BetStatus::SubmittedToSolana,
-                                solana_tx_id: Some(signature.clone()),
-                                error_message: None,
-                                won: None,
-                                payout_amount: None,
-                            })
-                            .collect(),
-                    },
-                )
-                .await?;
+        for chunk in resp.bets.chunks(max_per_tx) {
+            let bet_results = self.execute_bets_on_solana(chunk).await;
 
-                // Phase 4: Mark batch confirmed + bets completed
-                self.post_batch_update(
-                    resp.batch_id,
-                    UpdateBatchRequest {
-                        status: BatchStatus::Confirmed,
-                        solana_tx_id: Some(signature.clone()),
-                        error_message: None,
-                        bet_results: results
-                            .into_iter()
-                            .map(|(bet_id, won, payout_amount)| BetResult {
-                                bet_id,
-                                status: BetStatus::Completed,
-                                solana_tx_id: Some(signature.clone()),
-                                error_message: None,
-                                won: Some(won),
-                                payout_amount: Some(payout_amount),
-                            })
-                            .collect(),
-                    },
-                )
-                .await?;
-
-                let elapsed = start_time.elapsed();
-                tracing::info!(
-                    "Worker {}: Batch {} completed in {:?}",
-                    self.id,
-                    resp.batch_id,
-                    elapsed
-                );
-
-                metrics::histogram!("batch_processing_duration_seconds").record(elapsed.as_secs_f64());
-            }
-            Err(e) => {
-                tracing::error!("Worker {}: Batch {} failed: {:?}", self.id, resp.batch_id, e);
-
-                // Best-effort: mark bets retryable again
-                let _ = self
-                    .post_batch_update(
+            match bet_results {
+                Ok((signature, results)) => {
+                    // Phase 3: Mark chunk submitted
+                    self.post_batch_update(
                         resp.batch_id,
                         UpdateBatchRequest {
-                            status: BatchStatus::Failed,
-                            solana_tx_id: None,
-                            error_message: Some(e.to_string()),
-                            bet_results: resp
-                                .bets
+                            status: BatchStatus::Submitted,
+                            solana_tx_id: Some(signature.clone()),
+                            error_message: None,
+                            bet_results: chunk
                                 .iter()
                                 .map(|b| BetResult {
                                     bet_id: b.bet_id,
-                                    status: BetStatus::FailedRetryable,
-                                    solana_tx_id: None,
-                                    error_message: Some(e.to_string()),
+                                    status: BetStatus::SubmittedToSolana,
+                                    solana_tx_id: Some(signature.clone()),
+                                    error_message: None,
                                     won: None,
                                     payout_amount: None,
                                 })
                                 .collect(),
                         },
                     )
-                    .await;
+                    .await?;
+
+                    // Phase 4: Mark chunk confirmed + bets completed
+                    self.post_batch_update(
+                        resp.batch_id,
+                        UpdateBatchRequest {
+                            status: BatchStatus::Confirmed,
+                            solana_tx_id: Some(signature.clone()),
+                            error_message: None,
+                            bet_results: results
+                                .into_iter()
+                                .map(|(bet_id, won, payout_amount)| BetResult {
+                                    bet_id,
+                                    status: BetStatus::Completed,
+                                    solana_tx_id: Some(signature.clone()),
+                                    error_message: None,
+                                    won: Some(won),
+                                    payout_amount: Some(payout_amount),
+                                })
+                                .collect(),
+                        },
+                    )
+                    .await?;
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Worker {}: Batch {} chunk failed: {:?}",
+                        self.id,
+                        resp.batch_id,
+                        e
+                    );
+
+                    // Best-effort: mark this chunk retryable again.
+                    let _ = self
+                        .post_batch_update(
+                            resp.batch_id,
+                            UpdateBatchRequest {
+                                status: BatchStatus::Failed,
+                                solana_tx_id: None,
+                                error_message: Some(e.to_string()),
+                                bet_results: chunk
+                                    .iter()
+                                    .map(|b| BetResult {
+                                        bet_id: b.bet_id,
+                                        status: BetStatus::FailedRetryable,
+                                        solana_tx_id: None,
+                                        error_message: Some(e.to_string()),
+                                        won: None,
+                                        payout_amount: None,
+                                    })
+                                    .collect(),
+                            },
+                        )
+                        .await;
+
+                    // Stop this worker's batch loop early; remaining bets will be re-claimed later.
+                    return Err(e);
+                }
             }
         }
+
+        let elapsed = start_time.elapsed();
+        tracing::info!(
+            "Worker {}: Batch {} completed in {:?}",
+            self.id,
+            resp.batch_id,
+            elapsed
+        );
+
+        metrics::histogram!("batch_processing_duration_seconds").record(elapsed.as_secs_f64());
 
         Ok(())
     }
@@ -309,8 +325,11 @@ impl Worker {
             }
 
             // Real Solana transaction
-            let client = self.solana_client.get_healthy_client().await
-                .ok_or_else(|| anyhow::anyhow!("No healthy RPC clients available"))?;
+            let client = self
+                .solana_client
+                .get_healthy_client_or_any()
+                .await
+                .ok_or_else(|| anyhow::anyhow!("No RPC clients configured"))?;
             
             let vault_program_id = solana_sdk::pubkey::Pubkey::from_str(
                 &std::env::var("VAULT_PROGRAM_ID")?
@@ -323,6 +342,7 @@ impl Worker {
                 bets,
                 &self.processor_keypair,
                 &vault_program_id,
+                self.config.processor.max_bets_per_tx,
             ).await
         } else {
             // Simulated transaction for testing

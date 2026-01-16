@@ -41,6 +41,8 @@ export type BetStatus =
 
 export interface CreateBetRequest {
   user_wallet?: string;
+  vault_address?: string;
+  allowance_pda?: string;
   stake_amount: number;
   stake_token: string;
   choice: string;

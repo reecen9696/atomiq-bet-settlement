@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Program ID 
     let program_id = Pubkey::from_str(
         &env::var("VAULT_PROGRAM_ID")
-            .unwrap_or_else(|_| "HoWjrEKiWKjEvqtdMDAHS9PEwkHQbVp2t6vYuDv3mdi4".to_string())
+            .unwrap_or_else(|_| "Cek6v3J44BS6mpoUGjSqTeCUgTViUzpQKkMLcuiZsoxL".to_string())
     )?;
     
     // Load processor keypair

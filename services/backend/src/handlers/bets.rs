@@ -33,7 +33,10 @@ pub async fn create_bet(
     // Use provided user_wallet or placeholder for testing
     // In production, extract from authenticated session
     let user_wallet = req.user_wallet.take().unwrap_or_else(|| "TEMP_WALLET_ADDRESS".to_string());
-    let vault_address = "TEMP_VAULT_ADDRESS";
+    let vault_address = req
+        .vault_address
+        .clone()
+        .unwrap_or_else(|| "TEMP_VAULT_ADDRESS".to_string());
 
     // Validate bet amount
     if (req.stake_amount as i64) < state.config.betting.min_bet_lamports as i64
@@ -45,7 +48,7 @@ pub async fn create_bet(
     }
 
     let repo = RedisBetRepository::new(state.redis.clone());
-    let bet = repo.create(&user_wallet, vault_address, req).await?;
+    let bet = repo.create(&user_wallet, &vault_address, req).await?;
 
     // Publish to Redis stream for processor to pick up immediately
     let mut redis_conn = state.redis.clone();
