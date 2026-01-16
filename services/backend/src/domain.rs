@@ -1,0 +1,98 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq)]
+#[sqlx(type_name = "bet_status", rename_all = "snake_case")]
+pub enum BetStatus {
+    Pending,
+    Batched,
+    SubmittedToSolana,
+    ConfirmedOnSolana,
+    Completed,
+    FailedRetryable,
+    FailedManualReview,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Bet {
+    pub bet_id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub user_wallet: String,
+    pub vault_address: String,
+    pub casino_id: Option<String>,
+    pub game_type: String,
+    pub stake_amount: i64,
+    pub stake_token: String,
+    pub choice: String,
+    pub status: BetStatus,
+    pub external_batch_id: Option<Uuid>,
+    pub solana_tx_id: Option<String>,
+    pub retry_count: i32,
+    pub processor_id: Option<String>,
+    pub last_error_code: Option<String>,
+    pub last_error_message: Option<String>,
+    pub payout_amount: Option<i64>,
+    pub won: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateBetRequest {
+    pub user_wallet: Option<String>,
+    pub stake_amount: u64,
+    pub stake_token: String,
+    pub choice: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "batch_status", rename_all = "lowercase")]
+pub enum BatchStatus {
+    Created,
+    Submitted,
+    Confirmed,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Batch {
+    pub batch_id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub processor_id: String,
+    pub status: BatchStatus,
+    pub bet_count: i32,
+    pub solana_tx_id: Option<String>,
+    pub confirm_slot: Option<i64>,
+    pub confirm_status: Option<String>,
+    pub retry_count: i32,
+    pub last_error_code: Option<String>,
+    pub last_error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateBatchRequest {
+    pub status: BatchStatus,
+    pub solana_tx_id: Option<String>,
+    pub bet_results: Vec<BetResult>,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BetResult {
+    pub bet_id: Uuid,
+    pub status: BetStatus,
+    pub solana_tx_id: Option<String>,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditLogEntry {
+    pub id: i64,
+    pub event_time: DateTime<Utc>,
+    pub event_type: String,
+    pub aggregate_id: String,
+    pub user_id: Option<String>,
+    pub before_state: Option<serde_json::Value>,
+    pub after_state: Option<serde_json::Value>,
+    pub metadata: Option<serde_json::Value>,
+    pub actor: String,
+}

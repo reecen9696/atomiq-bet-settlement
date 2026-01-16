@@ -1,0 +1,55 @@
+[package]
+name = "backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Web framework
+axum = "0.7"
+tokio = { workspace = true }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Database
+sqlx = { workspace = true }
+
+# Redis
+redis = { workspace = true }
+
+# Solana
+solana-sdk = { workspace = true }
+solana-client = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Validation
+validator = { version = "0.16", features = ["derive"] }
+
+# Environment
+dotenvy = "0.15"
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# UUID
+uuid = { workspace = true }
+
+# Time
+chrono = { workspace = true }
+
+# Async
+async-trait = "0.1"
+
+# Metrics
+metrics = "0.21"
+metrics-exporter-prometheus = "0.13"
+
+[dev-dependencies]
+axum-test = "14"

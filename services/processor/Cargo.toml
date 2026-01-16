@@ -1,0 +1,58 @@
+[package]
+name = "processor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Async runtime
+tokio = { workspace = true }
+async-trait = "0.1"
+
+# Database
+sqlx = { workspace = true }
+
+# Redis
+redis = { workspace = true }
+
+# Solana
+solana-sdk = { workspace = true }
+solana-client = { workspace = true }
+spl-associated-token-account = "1.1.3"
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Environment
+dotenvy = "0.15"
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# UUID
+uuid = { workspace = true }
+
+# Time
+chrono = { workspace = true }
+
+# Metrics
+metrics = "0.21"
+metrics-exporter-prometheus = "0.13"
+
+# Web server for metrics
+axum = "0.7"
+
+# Retry logic
+backoff = { version = "0.4", features = ["tokio"] }
+
+# Concurrency
+futures = "0.3"
+tokio-util = "0.7"
+
+# Random (for bet outcomes)
+rand = "0.8"

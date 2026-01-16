@@ -1,0 +1,37 @@
+{
+  "name": "atomik-wallet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Solana non-custodial wallet with vault-based allowances and batched settlement",
+  "workspaces": [
+    "programs/*",
+    "services/*",
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm -r --parallel dev",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "anchor:build": "cd programs/vault && anchor build",
+    "anchor:test": "cd programs/vault && anchor test",
+    "anchor:deploy:localnet": "cd programs/vault && anchor deploy --provider.cluster localnet",
+    "anchor:deploy:testnet": "cd programs/vault && anchor deploy --provider.cluster testnet",
+    "db:migrate": "cd services/backend && cargo sqlx migrate run",
+    "processor:dev": "cd services/processor && cargo run",
+    "backend:dev": "cd services/backend && cargo run",
+    "frontend:dev": "cd apps/frontend && pnpm dev"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "prettier": "^3.2.4",
+    "typescript": "^5.3.3",
+    "turbo": "^1.11.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}

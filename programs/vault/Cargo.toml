@@ -1,0 +1,28 @@
+[package]
+name = "vault"
+version = "0.1.0"
+description = "Solana vault program with allowance-based spending"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "vault"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = "0.30.1"
+anchor-spl = "0.30.1"
+
+[dev-dependencies]
+solana-program-test = "~2"
+solana-sdk = "~2"
+tokio = "1"
+
+[profile.release]
+overflow-checks = true

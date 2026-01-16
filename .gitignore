@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock
+
+# Anchor
+.anchor/
+test-ledger/
+.DS_Store
+
+# Testing
+coverage/
+
+# Production
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+*.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Keys (NEVER commit!)
+*.key
+*.keypair
+id.json
+
+# Database
+*.db
+*.sqlite
