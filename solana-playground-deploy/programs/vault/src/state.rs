@@ -158,7 +158,7 @@ impl RateLimiter {
         1; // bump
 
     pub const WINDOW_DURATION: i64 = 3600; // 1 hour
-    pub const MAX_APPROVALS: u8 = 10;
+    pub const MAX_APPROVALS: u8 = 100;
 }
 
 /// Processed bet tracker (prevents duplicate processing)
@@ -193,7 +193,7 @@ impl ProcessedBet {
 }
 
 // Constants
-pub const MIN_BET_LAMPORTS: u64 = 100_000_000; // 0.1 SOL
+pub const MIN_BET_LAMPORTS: u64 = 10_000_000; // 0.01 SOL
 pub const MAX_BET_LAMPORTS: u64 = 1_000_000_000_000; // 1000 SOL
 pub const MAX_ALLOWANCE_DURATION: i64 = 86400; // 24 hours
 pub const MAX_ALLOWANCE_AMOUNT: u64 = 10_000_000_000_000; // 10,000 SOL

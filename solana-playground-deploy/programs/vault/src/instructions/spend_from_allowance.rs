@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_lang::system_program;
+use anchor_lang::solana_program::{program::invoke_signed, system_instruction};
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 use crate::state::*;
 use crate::errors::*;
@@ -114,16 +114,19 @@ pub fn handler(
         ];
         let signer_seeds = &[&seeds[..]];
 
-        system_program::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.system_program.to_account_info(),
-                system_program::Transfer {
-                    from: vault.to_account_info(),
-                    to: ctx.accounts.casino_vault.to_account_info(),
-                },
-                signer_seeds,
+        // Use raw system_instruction::transfer with invoke_signed
+        // This allows transferring from accounts with data (Anchor Account<Vault>)
+        invoke_signed(
+            &system_instruction::transfer(
+                &vault.key(),
+                &ctx.accounts.casino_vault.key(),
+                amount,
             ),
-            amount,
+            &[
+                vault.to_account_info(),
+                ctx.accounts.casino_vault.to_account_info(),
+            ],
+            signer_seeds,
         )?;
 
         vault.sol_balance = vault.sol_balance.safe_sub(amount)?;
