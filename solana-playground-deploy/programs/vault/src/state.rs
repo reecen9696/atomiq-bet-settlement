@@ -27,6 +27,30 @@ impl Vault {
         8; // last_activity
 }
 
+/// Casino vault account - program-owned account holding casino funds
+#[account]
+pub struct CasinoVault {
+    /// Casino this vault is associated with
+    pub casino: Pubkey,
+    /// Bump seed for PDA
+    pub bump: u8,
+    /// SOL balance (tracked for convenience)
+    pub sol_balance: u64,
+    /// Timestamp when vault was created
+    pub created_at: i64,
+    /// Last activity timestamp
+    pub last_activity: i64,
+}
+
+impl CasinoVault {
+    pub const LEN: usize = 8 + // discriminator
+        32 + // casino
+        1 + // bump
+        8 + // sol_balance
+        8 + // created_at
+        8; // last_activity
+}
+
 /// Casino configuration and authority
 #[account]
 pub struct Casino {

@@ -23,21 +23,20 @@ pub struct Payout<'info> {
     )]
     pub casino: Account<'info, Casino>,
 
-    /// Casino vault (source of payout) - should be the vault authority PDA
+    /// Casino vault (source of payout) - program-owned account holding casino funds
     #[account(
         mut,
-        seeds = [b"vault-authority", casino.key().as_ref()],
-        bump = casino.vault_authority_bump
+        seeds = [b"casino-vault", casino.key().as_ref()],
+        bump = casino_vault.bump
     )]
-    /// CHECK: This is the vault authority PDA that holds casino funds
-    pub casino_vault: UncheckedAccount<'info>,
+    pub casino_vault: Account<'info, CasinoVault>,
 
-    /// Vault authority PDA (for signing casino vault transfers)
+    /// Vault authority PDA (for signing SPL token transfers)
     #[account(
         seeds = [b"vault-authority", casino.key().as_ref()],
         bump = casino.vault_authority_bump
     )]
-    /// CHECK: This is a PDA used for signing
+    /// CHECK: This is a PDA used for signing SPL transfers
     pub vault_authority: UncheckedAccount<'info>,
 
     /// Optional: User's token account (for SPL payout)
@@ -78,11 +77,21 @@ pub fn handler(
 
     if is_sol {
         // SOL payout: casino_vault -> user vault
-        // Direct lamports manipulation - required for accounts with data
-        **ctx.accounts.casino_vault.to_account_info().try_borrow_mut_lamports()? -= amount;
+        // Direct lamports manipulation - works because both accounts are program-owned
+        let casino_vault = &mut ctx.accounts.casino_vault;
+        
+        // Balance check with reconciliation
+        require!(
+            casino_vault.sol_balance >= amount,
+            VaultError::InsufficientBalance
+        );
+        
+        **casino_vault.to_account_info().try_borrow_mut_lamports()? -= amount;
         **vault.to_account_info().try_borrow_mut_lamports()? += amount;
 
-        // Update vault balance
+        // Update tracked balances
+        casino_vault.sol_balance = casino_vault.sol_balance.safe_sub(amount)?;
+        casino_vault.last_activity = clock.unix_timestamp;
         vault.sol_balance = vault.sol_balance.safe_add(amount)?;
     } else {
         // SPL payout: casino_token_account -> user_token_account

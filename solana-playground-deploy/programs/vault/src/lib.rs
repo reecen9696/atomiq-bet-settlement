@@ -19,6 +19,8 @@ use crate::instructions::deposit_sol::DepositSol;
 use crate::instructions::deposit_spl::DepositSpl;
 use crate::instructions::initialize_casino_vault::InitializeCasinoVault;
 use crate::instructions::initialize_vault::InitializeVault;
+use crate::instructions::initialize_vault_only::InitializeVaultOnly;
+use crate::instructions::reconcile_casino_vault::ReconcileCasinoVault;
 use crate::instructions::pause_casino::{PauseCasino, UnpauseCasino};
 use crate::instructions::payout::Payout;
 use crate::instructions::revoke_allowance::RevokeAllowance;
@@ -42,6 +44,16 @@ pub mod vault {
         authority: Pubkey,
     ) -> Result<()> {
         instructions::initialize_casino_vault::handler(ctx, authority)
+    }
+
+    /// Initialize just the casino vault for an existing casino
+    pub fn initialize_vault_only(ctx: Context<InitializeVaultOnly>) -> Result<()> {
+        instructions::initialize_vault_only::handler(ctx)
+    }
+
+    /// Reconcile casino vault balance (admin only - syncs tracked balance with actual lamports)
+    pub fn reconcile_casino_vault(ctx: Context<ReconcileCasinoVault>) -> Result<()> {
+        instructions::reconcile_casino_vault::handler(ctx)
     }
 
     /// Deposit SOL into vault

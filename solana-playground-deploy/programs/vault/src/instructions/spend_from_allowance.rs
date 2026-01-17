@@ -48,10 +48,21 @@ pub struct SpendFromAllowance<'info> {
     )]
     pub processed_bet: Account<'info, ProcessedBet>,
 
-    /// Casino vault (for SOL) or vault authority (for SPL signing)
-    #[account(mut)]
-    /// CHECK: Either casino vault PDA for SOL or vault authority for SPL
-    pub casino_vault: UncheckedAccount<'info>,
+    /// Casino vault (for SOL) - program-owned account holding casino funds
+    #[account(
+        mut,
+        seeds = [b"casino-vault", casino.key().as_ref()],
+        bump = casino_vault.bump
+    )]
+    pub casino_vault: Account<'info, CasinoVault>,
+
+    /// Vault authority PDA (for signing SPL token transfers)
+    #[account(
+        seeds = [b"vault-authority", casino.key().as_ref()],
+        bump = casino.vault_authority_bump
+    )]
+    /// CHECK: This is a PDA used only for signing SPL transfers
+    pub vault_authority: UncheckedAccount<'info>,
 
     /// Optional: User's token account (for SPL)
     #[account(mut)]
@@ -111,6 +122,8 @@ pub fn handler(
         **ctx.accounts.casino_vault.to_account_info().try_borrow_mut_lamports()? += amount;
 
         vault.sol_balance = vault.sol_balance.safe_sub(amount)?;
+        ctx.accounts.casino_vault.sol_balance = ctx.accounts.casino_vault.sol_balance.safe_add(amount)?;
+        ctx.accounts.casino_vault.last_activity = clock.unix_timestamp;
         msg!("Native SOL transfer: {} lamports from vault to casino", amount);
     } else if allowance.token_mint == WRAPPED_SOL_MINT {
         // WRAPPED SOL: user_token_account -> casino_token_account (SPL transfer)
