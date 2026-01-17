@@ -88,7 +88,13 @@ pub async fn submit_batch_transaction(
         // Derive user vault PDA
         let (user_vault_pda, _) = derive_user_vault_pda(&user_pubkey, &casino_pda, vault_program_id);
 
-        // Derive vault authority PDA (used for casino vault)
+        // Derive casino vault PDA (program-owned account holding SOL)
+        let (casino_vault, _) = Pubkey::find_program_address(
+            &[b"casino-vault", casino_pda.as_ref()],
+            vault_program_id,
+        );
+
+        // Derive vault authority PDA (used for SPL token signing)
         let (vault_authority, _) = Pubkey::find_program_address(
             &[b"vault-authority", casino_pda.as_ref()],
             vault_program_id,
@@ -180,6 +186,7 @@ pub async fn submit_batch_transaction(
             &casino_pda,
             &allowance,
             &processed_bet,
+            &casino_vault,
             &vault_authority,
             user_token_account.as_ref(),
             casino_token_account.as_ref(),
@@ -201,6 +208,7 @@ pub async fn submit_batch_transaction(
             let payout_ix = build_payout_instruction(
                 vault_program_id,
                 &casino_pda,
+                &casino_vault,
                 &vault_authority,
                 &user_vault_pda,
                 &processed_bet_payout,
@@ -332,6 +340,7 @@ fn build_spend_from_allowance_instruction(
     allowance: &Pubkey,
     processed_bet: &Pubkey,
     casino_vault: &Pubkey,
+    vault_authority: &Pubkey,
     user_token_account: Option<&Pubkey>,
     casino_token_account: Option<&Pubkey>,
     processor: &Pubkey,
@@ -356,6 +365,7 @@ fn build_spend_from_allowance_instruction(
         AccountMeta::new(*allowance, false),
         AccountMeta::new(*processed_bet, false),
         AccountMeta::new(*casino_vault, false),
+        AccountMeta::new_readonly(*vault_authority, false),
     ];
 
     // Keep account ordering stable for Anchor optional accounts.
@@ -400,6 +410,7 @@ fn build_spend_from_allowance_instruction(
 fn build_payout_instruction(
     program_id: &Pubkey,
     casino: &Pubkey,
+    casino_vault: &Pubkey,
     vault_authority: &Pubkey,
     user_vault: &Pubkey,
     processed_bet: &Pubkey,
@@ -424,8 +435,8 @@ fn build_payout_instruction(
         accounts: vec![
             AccountMeta::new(*user_vault, false),              // vault
             AccountMeta::new(*casino, false),                   // casino (writable for stats)
-            AccountMeta::new(*vault_authority, false),          // casino_vault (using vault_authority which holds SOL)
-            AccountMeta::new_readonly(*vault_authority, false), // vault_authority (PDA for signing)
+            AccountMeta::new(*casino_vault, false),             // casino_vault (program-owned, holds SOL)
+            AccountMeta::new_readonly(*vault_authority, false), // vault_authority (PDA for SPL signing)
             // For SOL transfers, pass program_id as placeholder for optional token accounts
             AccountMeta::new_readonly(*program_id, false),      // user_token_account (optional)
             AccountMeta::new_readonly(*program_id, false),      // casino_token_account (optional)
