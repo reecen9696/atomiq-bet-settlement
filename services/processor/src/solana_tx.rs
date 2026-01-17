@@ -370,19 +370,21 @@ fn build_spend_from_allowance_instruction(
 
     // Keep account ordering stable for Anchor optional accounts.
     // Anchor treats an optional account as None when the provided pubkey equals program_id.
+    // Important: Must use 'new' (writable) to match the #[account(mut)] in Rust instruction,
+    // even for placeholders, otherwise Anchor may fail to recognize them as None.
     match (user_token_account, casino_token_account) {
         (Some(user_ta), Some(casino_ta)) => {
             accounts.push(AccountMeta::new(*user_ta, false));
             accounts.push(AccountMeta::new(*casino_ta, false));
         }
         (None, None) => {
-            accounts.push(AccountMeta::new_readonly(*program_id, false));
-            accounts.push(AccountMeta::new_readonly(*program_id, false));
+            accounts.push(AccountMeta::new(*program_id, false));
+            accounts.push(AccountMeta::new(*program_id, false));
         }
         _ => {
             // Should never happen; treat as SOL-mode placeholders to avoid shifting.
-            accounts.push(AccountMeta::new_readonly(*program_id, false));
-            accounts.push(AccountMeta::new_readonly(*program_id, false));
+            accounts.push(AccountMeta::new(*program_id, false));
+            accounts.push(AccountMeta::new(*program_id, false));
         }
     }
 
