@@ -23,9 +23,13 @@ pub struct Payout<'info> {
     )]
     pub casino: Account<'info, Casino>,
 
-    /// Casino vault (source of payout)
-    #[account(mut)]
-    /// CHECK: Casino vault PDA or token account
+    /// Casino vault (source of payout) - should be the vault authority PDA
+    #[account(
+        mut,
+        seeds = [b"vault-authority", casino.key().as_ref()],
+        bump = casino.vault_authority_bump
+    )]
+    /// CHECK: This is the vault authority PDA that holds casino funds
     pub casino_vault: UncheckedAccount<'info>,
 
     /// Vault authority PDA (for signing casino vault transfers)
@@ -44,13 +48,9 @@ pub struct Payout<'info> {
     #[account(mut)]
     pub casino_token_account: Option<Account<'info, TokenAccount>>,
 
-    /// Reference to processed bet
-    #[account(
-        seeds = [b"processed-bet", bet_id.as_bytes()],
-        bump = processed_bet.bump,
-        constraint = processed_bet.user == vault.owner
-    )]
-    pub processed_bet: Account<'info, ProcessedBet>,
+    /// Reference to processed bet (optional - may not exist yet in same tx)
+    /// CHECK: We trust the processor signer, so this is just for tracking
+    pub processed_bet: UncheckedAccount<'info>,
 
     /// Processor (authorized to execute payouts)
     #[account(
@@ -78,25 +78,9 @@ pub fn handler(
 
     if is_sol {
         // SOL payout: casino_vault -> user vault
-        let casino_key = casino.key();
-        let seeds = &[
-            b"vault-authority",
-            casino_key.as_ref(),
-            &[casino.vault_authority_bump],
-        ];
-        let signer_seeds = &[&seeds[..]];
-
-        system_program::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.system_program.to_account_info(),
-                system_program::Transfer {
-                    from: ctx.accounts.casino_vault.to_account_info(),
-                    to: vault.to_account_info(),
-                },
-                signer_seeds,
-            ),
-            amount,
-        )?;
+        // Direct lamports manipulation - required for accounts with data
+        **ctx.accounts.casino_vault.to_account_info().try_borrow_mut_lamports()? -= amount;
+        **vault.to_account_info().try_borrow_mut_lamports()? += amount;
 
         // Update vault balance
         vault.sol_balance = vault.sol_balance.safe_add(amount)?;

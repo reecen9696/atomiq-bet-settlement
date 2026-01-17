@@ -1,5 +1,4 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::{program::invoke_signed, system_instruction};
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 use crate::state::*;
 use crate::errors::*;
@@ -105,29 +104,11 @@ pub fn handler(
         // NATIVE SOL: vault -> casino_vault
         require!(vault.sol_balance >= amount, VaultError::InsufficientBalance);
 
-        let casino_key = casino.key();
-        let seeds = &[
-            b"vault",
-            casino_key.as_ref(),
-            vault.owner.as_ref(),
-            &[vault.bump],
-        ];
-        let signer_seeds = &[&seeds[..]];
-
-        // Use raw system_instruction::transfer with invoke_signed
-        // This allows transferring from accounts with data (Anchor Account<Vault>)
-        invoke_signed(
-            &system_instruction::transfer(
-                &vault.key(),
-                &ctx.accounts.casino_vault.key(),
-                amount,
-            ),
-            &[
-                vault.to_account_info(),
-                ctx.accounts.casino_vault.to_account_info(),
-            ],
-            signer_seeds,
-        )?;
+        // Direct lamports manipulation - required for accounts with data
+        // The System Program's transfer instruction cannot be used on accounts with data,
+        // so we manipulate the lamports directly using Anchor's account methods
+        **vault.to_account_info().try_borrow_mut_lamports()? -= amount;
+        **ctx.accounts.casino_vault.to_account_info().try_borrow_mut_lamports()? += amount;
 
         vault.sol_balance = vault.sol_balance.safe_sub(amount)?;
         msg!("Native SOL transfer: {} lamports from vault to casino", amount);

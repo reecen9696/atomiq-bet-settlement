@@ -47,6 +47,8 @@ Thumbs.db
 *.key
 *.keypair
 id.json
+*keypair.json
+phantom.json
 
 # Database
 *.db

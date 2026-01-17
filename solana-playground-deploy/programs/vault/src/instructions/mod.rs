@@ -10,6 +10,7 @@ pub mod payout;
 pub mod withdraw_sol;
 pub mod withdraw_spl;
 pub mod pause_casino;
+pub mod withdraw_casino_funds;
 
 pub use initialize_vault::*;
 pub use initialize_casino_vault::*;
@@ -23,3 +24,4 @@ pub use payout::*;
 pub use withdraw_sol::*;
 pub use withdraw_spl::*;
 pub use pause_casino::*;
+pub use withdraw_casino_funds::*;

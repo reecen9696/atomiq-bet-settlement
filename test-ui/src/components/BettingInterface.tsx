@@ -1,31 +1,37 @@
-import { useState } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
-import { useApi } from '../hooks/useApi';
-import { Coins, Loader2, TrendingUp, TrendingDown, ExternalLink } from 'lucide-react';
-import { solanaService } from '../services/solana';
-import type { Bet } from '../types';
+import { useState } from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useApi } from "../hooks/useApi";
+import {
+  Coins,
+  Loader2,
+  TrendingUp,
+  TrendingDown,
+  ExternalLink,
+} from "lucide-react";
+import { solanaService } from "../services/solana";
+import type { Bet } from "../types";
 
 export function BettingInterface() {
   const { publicKey } = useWallet();
   const { createBet, isLoading } = useApi();
-  const [amount, setAmount] = useState('0.1');
-  const [choice, setChoice] = useState<'heads' | 'tails'>('heads');
+  const [amount, setAmount] = useState("0.1");
+  const [choice, setChoice] = useState<"heads" | "tails">("heads");
   const [lastBet, setLastBet] = useState<Bet | null>(null);
-  const [error, setError] = useState<string>('');
+  const [error, setError] = useState<string>("");
 
   const handlePlaceBet = async () => {
     if (!publicKey) {
-      setError('Please connect your wallet first');
+      setError("Please connect your wallet first");
       return;
     }
 
     const amountNum = parseFloat(amount);
-    if (isNaN(amountNum) || amountNum < 0.1) {
-      setError('Minimum bet is 0.1 SOL');
+    if (isNaN(amountNum) || amountNum < 0.01) {
+      setError("Minimum bet is 0.01 SOL");
       return;
     }
 
-    setError('');
+    setError("");
     try {
       const [vaultAddress, allowancePda] = await Promise.all([
         solanaService.deriveVaultPDA(publicKey.toBase58()),
@@ -33,16 +39,16 @@ export function BettingInterface() {
           try {
             const key = `atomik:lastAllowancePda:${publicKey.toBase58()}`;
             const saved = localStorage.getItem(key);
-            return saved && saved.length > 20 ? saved : '';
+            return saved && saved.length > 20 ? saved : "";
           } catch {
-            return '';
+            return "";
           }
         })(),
       ]);
 
       const response = await createBet({
         stake_amount: Math.floor(amountNum * 1_000_000_000), // Convert to lamports
-        stake_token: 'SOL',
+        stake_token: "SOL",
         choice,
         user_wallet: publicKey.toBase58(),
         vault_address: vaultAddress,
@@ -50,11 +56,12 @@ export function BettingInterface() {
       });
 
       setLastBet(response.bet);
-      console.log('Bet created:', response.bet);
+      console.log("Bet created:", response.bet);
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to place bet';
+      const errorMsg =
+        err instanceof Error ? err.message : "Failed to place bet";
       setError(errorMsg);
-      console.error('Bet placement error:', err);
+      console.error("Bet placement error:", err);
     }
   };
 
@@ -88,13 +95,14 @@ export function BettingInterface() {
             type="number"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            min="0.1"
-            step="0.1"
+            min="0.01"
+            step="0.01"
             className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-200 transition-all text-lg font-mono"
-            placeholder="0.1"
+            placeholder="0.01"
           />
           <p className="text-xs text-gray-500 mt-1">
-            Minimum: 0.1 SOL (~{(parseFloat(amount) * 1_000_000_000).toLocaleString()} lamports)
+            Minimum: 0.01 SOL (~
+            {(parseFloat(amount) * 1_000_000_000).toLocaleString()} lamports)
           </p>
         </div>
 
@@ -105,11 +113,11 @@ export function BettingInterface() {
           </label>
           <div className="grid grid-cols-2 gap-3">
             <button
-              onClick={() => setChoice('heads')}
+              onClick={() => setChoice("heads")}
               className={`p-4 rounded-lg border-2 transition-all ${
-                choice === 'heads'
-                  ? 'border-orange-500 bg-orange-50 shadow-md'
-                  : 'border-gray-300 bg-white hover:border-orange-300'
+                choice === "heads"
+                  ? "border-orange-500 bg-orange-50 shadow-md"
+                  : "border-gray-300 bg-white hover:border-orange-300"
               }`}
             >
               <div className="text-center">
@@ -118,11 +126,11 @@ export function BettingInterface() {
               </div>
             </button>
             <button
-              onClick={() => setChoice('tails')}
+              onClick={() => setChoice("tails")}
               className={`p-4 rounded-lg border-2 transition-all ${
-                choice === 'tails'
-                  ? 'border-orange-500 bg-orange-50 shadow-md'
-                  : 'border-gray-300 bg-white hover:border-orange-300'
+                choice === "tails"
+                  ? "border-orange-500 bg-orange-50 shadow-md"
+                  : "border-gray-300 bg-white hover:border-orange-300"
               }`}
             >
               <div className="text-center">
@@ -158,20 +166,28 @@ export function BettingInterface() {
 
         {/* Last Bet Result */}
         {lastBet && (
-          <div className={`p-4 rounded-lg border-2 ${
-            lastBet.won === true
-              ? 'bg-green-50 border-green-300'
-              : lastBet.won === false
-              ? 'bg-red-50 border-red-300'
-              : 'bg-blue-50 border-blue-300'
-          }`}>
+          <div
+            className={`p-4 rounded-lg border-2 ${
+              lastBet.won === true
+                ? "bg-green-50 border-green-300"
+                : lastBet.won === false
+                  ? "bg-red-50 border-red-300"
+                  : "bg-blue-50 border-blue-300"
+            }`}
+          >
             <div className="flex items-start justify-between mb-2">
               <h3 className="font-bold text-gray-800 flex items-center">
-                {lastBet.won === true && <TrendingUp className="w-5 h-5 mr-1 text-green-600" />}
-                {lastBet.won === false && <TrendingDown className="w-5 h-5 mr-1 text-red-600" />}
+                {lastBet.won === true && (
+                  <TrendingUp className="w-5 h-5 mr-1 text-green-600" />
+                )}
+                {lastBet.won === false && (
+                  <TrendingDown className="w-5 h-5 mr-1 text-red-600" />
+                )}
                 Last Bet
               </h3>
-              <span className={`px-2 py-1 rounded text-xs font-bold ${getStatusBadgeClass(lastBet.status)}`}>
+              <span
+                className={`px-2 py-1 rounded text-xs font-bold ${getStatusBadgeClass(lastBet.status)}`}
+              >
                 {lastBet.status}
               </span>
             </div>
@@ -179,7 +195,9 @@ export function BettingInterface() {
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-600">Bet ID:</span>
-                <code className="text-xs font-mono">{lastBet.bet_id.slice(0, 8)}...</code>
+                <code className="text-xs font-mono">
+                  {lastBet.bet_id.slice(0, 8)}...
+                </code>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Amount:</span>
@@ -189,13 +207,17 @@ export function BettingInterface() {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Choice:</span>
-                <span className="font-semibold uppercase">{lastBet.choice}</span>
+                <span className="font-semibold uppercase">
+                  {lastBet.choice}
+                </span>
               </div>
               {lastBet.won !== null && (
                 <div className="flex justify-between">
                   <span className="text-gray-600">Result:</span>
-                  <span className={`font-bold ${lastBet.won ? 'text-green-600' : 'text-red-600'}`}>
-                    {lastBet.won ? 'WON! 🎉' : 'LOST 😔'}
+                  <span
+                    className={`font-bold ${lastBet.won ? "text-green-600" : "text-red-600"}`}
+                  >
+                    {lastBet.won ? "WON! 🎉" : "LOST 😔"}
                   </span>
                 </div>
               )}
@@ -243,19 +265,19 @@ export function BettingInterface() {
 function getStatusBadgeClass(status: string): string {
   const normalized = status.toLowerCase();
   switch (normalized) {
-    case 'completed':
-      return 'bg-green-100 text-green-800';
-    case 'pending':
-      return 'bg-yellow-100 text-yellow-800';
-    case 'batched':
-    case 'submitted_to_solana':
-    case 'confirmed_on_solana':
-      return 'bg-blue-100 text-blue-800';
-    case 'failed_retryable':
-      return 'bg-orange-100 text-orange-800';
-    case 'failed_manual_review':
-      return 'bg-red-100 text-red-800';
+    case "completed":
+      return "bg-green-100 text-green-800";
+    case "pending":
+      return "bg-yellow-100 text-yellow-800";
+    case "batched":
+    case "submitted_to_solana":
+    case "confirmed_on_solana":
+      return "bg-blue-100 text-blue-800";
+    case "failed_retryable":
+      return "bg-orange-100 text-orange-800";
+    case "failed_manual_review":
+      return "bg-red-100 text-red-800";
     default:
-      return 'bg-gray-100 text-gray-800';
+      return "bg-gray-100 text-gray-800";
   }
 }

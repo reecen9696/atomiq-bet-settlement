@@ -25,6 +25,7 @@ use crate::instructions::revoke_allowance::RevokeAllowance;
 use crate::instructions::spend_from_allowance::SpendFromAllowance;
 use crate::instructions::withdraw_sol::WithdrawSol;
 use crate::instructions::withdraw_spl::WithdrawSpl;
+use crate::instructions::withdraw_casino_funds::WithdrawCasinoFunds;
 
 #[program]
 pub mod vault {
@@ -115,5 +116,10 @@ pub mod vault {
     /// Unpause (admin only)
     pub fn unpause_casino(ctx: Context<UnpauseCasino>) -> Result<()> {
         instructions::pause_casino::unpause_handler(ctx)
+    }
+
+    /// Withdraw funds from casino vault (admin only)
+    pub fn withdraw_casino_funds(ctx: Context<WithdrawCasinoFunds>, amount: u64) -> Result<()> {
+        instructions::withdraw_casino_funds::handler(ctx, amount)
     }
 }

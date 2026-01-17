@@ -7,6 +7,7 @@ use solana_sdk::{
     pubkey::Pubkey,
     signature::{Keypair, Signer},
     system_program,
+    sysvar,
     transaction::Transaction,
 };
 use std::str::FromStr;
@@ -30,6 +31,20 @@ fn parse_allowance_nonce_registry_next_nonce(data: &[u8]) -> Option<u64> {
     let mut buf = [0u8; 8];
     buf.copy_from_slice(&data[next_nonce_offset..next_nonce_offset + 8]);
     Some(u64::from_le_bytes(buf))
+}
+
+fn parse_allowance_token_mint(data: &[u8]) -> Option<Pubkey> {
+    // Anchor accounts have an 8-byte discriminator prefix.
+    // Layout (prefix only): discriminator (8) | user (32) | casino (32) | token_mint (32) | ...
+    let min_len = 8 + 32 + 32 + 32;
+    if data.len() < min_len {
+        return None;
+    }
+
+    let token_mint_offset = 8 + 32 + 32;
+    let mut buf = [0u8; 32];
+    buf.copy_from_slice(&data[token_mint_offset..token_mint_offset + 32]);
+    Some(Pubkey::new_from_array(buf))
 }
 
 fn allowance_account_exists(client: &RpcClient, allowance: &Pubkey) -> bool {
@@ -109,25 +124,47 @@ pub async fn submit_batch_transaction(
                     )
                 })?
         };
-        
-        // Derive token accounts dynamically
-        let wrapped_sol_mint = Pubkey::from_str("So11111111111111111111111111111111111111112")
-            .expect("Valid wrapped SOL mint");
-        let user_token_account = get_associated_token_address(&user_pubkey, &wrapped_sol_mint);
-        let casino_token_account = get_associated_token_address(&casino_pda, &wrapped_sol_mint);
 
-        // Temporarily disable ATA creation to isolate the issue
-        // if client.get_account(&casino_token_account).is_err() {
-        //     let wrapped_sol_mint = Pubkey::from_str("So11111111111111111111111111111111111111112")
-        //         .expect("Valid wrapped SOL mint");
-        //     
-        //     let create_ata_ix = build_create_ata_instruction(
-        //         &processor_keypair.pubkey(),
-        //         &casino_pda,
-        //         &wrapped_sol_mint,
-        //     )?;
-        //     instructions.push(create_ata_ix);
-        // }
+        // Determine whether this allowance is native SOL (no SPL token accounts) or SPL.
+        // If we include token accounts for a native SOL allowance, Anchor will attempt to
+        // deserialize them and fail with AccountNotInitialized.
+        let allowance_acct = client
+            .get_account(&allowance)
+            .with_context(|| format!("Failed to fetch allowance account {}", allowance))?;
+        let allowance_token_mint = parse_allowance_token_mint(&allowance_acct.data)
+            .with_context(|| format!("Failed to parse allowance token_mint for {}", allowance))?;
+        let is_native_sol = allowance_token_mint == system_program::ID || allowance_token_mint == Pubkey::default();
+
+        let mut user_token_account: Option<Pubkey> = None;
+        let mut casino_token_account: Option<Pubkey> = None;
+
+        if !is_native_sol {
+            let user_ata = get_associated_token_address(&user_pubkey, &allowance_token_mint);
+            let casino_ata = get_associated_token_address(&casino_pda, &allowance_token_mint);
+
+            // User ATA must exist if spending SPL tokens.
+            if client.get_account(&user_ata).is_err() {
+                anyhow::bail!(
+                    "User token account {} not initialized for mint {} (bet {})",
+                    user_ata,
+                    allowance_token_mint,
+                    bet.bet_id
+                );
+            }
+
+            // Casino ATA can be created by the processor if missing.
+            if client.get_account(&casino_ata).is_err() {
+                let create_ata_ix = build_create_ata_instruction(
+                    &processor_keypair.pubkey(),
+                    &casino_pda,
+                    &allowance_token_mint,
+                )?;
+                instructions.push(create_ata_ix);
+            }
+
+            user_token_account = Some(user_ata);
+            casino_token_account = Some(casino_ata);
+        }
 
         // Derive processed_bet PDA (use UUID string without hyphens to stay under 32 byte limit)
         let bet_id_no_hyphens = bet.bet_id.to_string().replace("-", "");
@@ -144,8 +181,8 @@ pub async fn submit_batch_transaction(
             &allowance,
             &processed_bet,
             &vault_authority,
-            &user_token_account,
-            &casino_token_account,
+            user_token_account.as_ref(),
+            casino_token_account.as_ref(),
             &processor_keypair.pubkey(),
             bet.stake_amount as u64,
             &bet_id_no_hyphens, // Pass without hyphens to match PDA derivation
@@ -295,8 +332,8 @@ fn build_spend_from_allowance_instruction(
     allowance: &Pubkey,
     processed_bet: &Pubkey,
     casino_vault: &Pubkey,
-    user_token_account: &Pubkey,
-    casino_token_account: &Pubkey,
+    user_token_account: Option<&Pubkey>,
+    casino_token_account: Option<&Pubkey>,
     processor: &Pubkey,
     amount: u64,
     bet_id: &str,
@@ -313,25 +350,48 @@ fn build_spend_from_allowance_instruction(
     data.extend_from_slice(&(bet_id_bytes.len() as u32).to_le_bytes());
     data.extend_from_slice(bet_id_bytes);
 
+    let mut accounts = vec![
+        AccountMeta::new(*user_vault, false),
+        AccountMeta::new(*casino, false),
+        AccountMeta::new(*allowance, false),
+        AccountMeta::new(*processed_bet, false),
+        AccountMeta::new(*casino_vault, false),
+    ];
+
+    // Keep account ordering stable for Anchor optional accounts.
+    // Anchor treats an optional account as None when the provided pubkey equals program_id.
+    match (user_token_account, casino_token_account) {
+        (Some(user_ta), Some(casino_ta)) => {
+            accounts.push(AccountMeta::new(*user_ta, false));
+            accounts.push(AccountMeta::new(*casino_ta, false));
+        }
+        (None, None) => {
+            accounts.push(AccountMeta::new_readonly(*program_id, false));
+            accounts.push(AccountMeta::new_readonly(*program_id, false));
+        }
+        _ => {
+            // Should never happen; treat as SOL-mode placeholders to avoid shifting.
+            accounts.push(AccountMeta::new_readonly(*program_id, false));
+            accounts.push(AccountMeta::new_readonly(*program_id, false));
+        }
+    }
+
+    accounts.push(AccountMeta::new(*processor, true));
+    accounts.push(AccountMeta::new_readonly(system_program::ID, false));
+
+    // token_program is optional on-chain; use the same placeholder convention.
+    if user_token_account.is_some() && casino_token_account.is_some() {
+        accounts.push(AccountMeta::new_readonly(
+            Pubkey::from_str(SPL_TOKEN_PROGRAM_ID).expect("Valid SPL token program ID"),
+            false,
+        ));
+    } else {
+        accounts.push(AccountMeta::new_readonly(*program_id, false));
+    }
+
     Instruction {
         program_id: *program_id,
-        accounts: vec![
-            AccountMeta::new(*user_vault, false),
-            AccountMeta::new_readonly(*casino, false),
-            AccountMeta::new(*allowance, false),
-            AccountMeta::new(*processed_bet, false),
-            AccountMeta::new(*casino_vault, false),
-            // Token accounts for wrapped SOL
-            AccountMeta::new(*user_token_account, false),
-            AccountMeta::new(*casino_token_account, false),
-            AccountMeta::new(*processor, true),
-            AccountMeta::new_readonly(system_program::ID, false),
-            AccountMeta::new_readonly(
-                Pubkey::from_str(SPL_TOKEN_PROGRAM_ID).expect("Valid SPL token program ID"), 
-                false
-            ), // token_program
-            // token_program (optional) - omit for SOL
-        ],
+        accounts,
         data,
     }
 }
@@ -415,6 +475,7 @@ fn build_create_ata_instruction(
             AccountMeta::new_readonly(*mint, false),  // mint
             AccountMeta::new_readonly(system_program::ID, false), // system_program
             AccountMeta::new_readonly(spl_token_program, false), // token_program
+            AccountMeta::new_readonly(sysvar::rent::ID, false), // rent
         ],
         data: vec![], // No data needed for ATA creation
     })

@@ -1,0 +1,111 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Program ID Verification</title>
+    <style>
+      body {
+        font-family: monospace;
+        padding: 20px;
+        background: #1a1a1a;
+        color: #00ff00;
+      }
+      .success {
+        color: #00ff00;
+      }
+      .error {
+        color: #ff0000;
+      }
+      .warning {
+        color: #ffaa00;
+      }
+      pre {
+        background: #000;
+        padding: 15px;
+        border-radius: 5px;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🔍 Program ID Verification</h1>
+    <div id="results"></div>
+
+    <script type="module">
+      const results = document.getElementById("results");
+
+      // Expected values
+      const EXPECTED_PROGRAM_ID =
+        "HTg6Cs11FNiRXjQ2wFiQodKrVuTQdEJYk8j4RtfX56rP";
+      const OLD_PROGRAM_ID = "Cek6v3J44BS6mpoUGjSqTeCUgTViUzpQKkMLcuiZsoxL";
+
+      // Check what Vite injected
+      const actualProgramId = import.meta.env.VITE_VAULT_PROGRAM_ID;
+
+      let html = "<h2>Environment Variables:</h2><pre>";
+      html += `VITE_VAULT_PROGRAM_ID: ${actualProgramId}\n`;
+      html += `VITE_SOLANA_NETWORK: ${import.meta.env.VITE_SOLANA_NETWORK}\n`;
+      html += `VITE_API_BASE_URL: ${import.meta.env.VITE_API_BASE_URL}\n`;
+      html += "</pre>";
+
+      html += "<h2>Verification:</h2>";
+
+      if (actualProgramId === EXPECTED_PROGRAM_ID) {
+        html += '<p class="success">✅ CORRECT! Using new program ID</p>';
+      } else if (actualProgramId === OLD_PROGRAM_ID) {
+        html += '<p class="error">❌ WRONG! Still using old program ID</p>';
+        html += '<p class="warning">Solutions:</p>';
+        html += "<ul>";
+        html += "<li>Hard refresh: Cmd+Shift+R (Mac) or Ctrl+Shift+R</li>";
+        html +=
+          "<li>Clear localStorage: Open console and run: localStorage.clear(); location.reload();</li>";
+        html += "<li>Restart dev server</li>";
+        html += "</ul>";
+      } else {
+        html += '<p class="warning">⚠️  Unknown program ID</p>';
+      }
+
+      // Derive PDAs
+      html += "<h2>Derived PDAs:</h2>";
+      html += "<p>Loading Solana Web3.js...</p>";
+      html += '<div id="pda-results">Computing...</div>';
+
+      results.innerHTML = html;
+
+      // Load Solana and compute PDAs
+      try {
+        const { PublicKey } =
+          await import("https://esm.sh/@solana/web3.js@1.95.8");
+
+        const [casinoPDA] = PublicKey.findProgramAddressSync(
+          [Buffer.from("casino")],
+          new PublicKey(actualProgramId),
+        );
+
+        let pdaHtml = "<pre>";
+        pdaHtml += `Program ID: ${actualProgramId}\n`;
+        pdaHtml += `Casino PDA: ${casinoPDA.toBase58()}\n`;
+        pdaHtml += "</pre>";
+
+        if (
+          casinoPDA.toBase58() ===
+          "FhTXCNZFUZwKzhYBdWsCbmQ6Uv3WLmn9fsst9wHtwZks"
+        ) {
+          pdaHtml +=
+            '<p class="success">✅ Casino PDA matches new program!</p>';
+        } else if (
+          casinoPDA.toBase58() ===
+            "Hk51rWkSqnZfqAqQtvuLnZKxzT79fS5n5ksAJ86TJpCj" ||
+          casinoPDA.toBase58() ===
+            "Hk51nMxSqn2fqAqQtvuLn2KxzT79fS5n5ksAJ86TJpCj"
+        ) {
+          pdaHtml += '<p class="error">❌ Casino PDA matches old program!</p>';
+        }
+
+        document.getElementById("pda-results").innerHTML = pdaHtml;
+      } catch (e) {
+        document.getElementById("pda-results").innerHTML =
+          `<p class="error">Error loading Solana: ${e.message}</p>`;
+      }
+    </script>
+  </body>
+</html>

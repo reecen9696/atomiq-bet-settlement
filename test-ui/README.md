@@ -37,7 +37,7 @@ Create a `.env` file in the `test-ui` directory:
 VITE_PRIVY_APP_ID=your_privy_app_id_here
 VITE_API_BASE_URL=http://localhost:3001
 VITE_SOLANA_RPC_URL=https://api.devnet.solana.com
-VITE_VAULT_PROGRAM_ID=Cek6v3J44BS6mpoUGjSqTeCUgTViUzpQKkMLcuiZsoxL
+VITE_VAULT_PROGRAM_ID=HTg6Cs11FNiRXjQ2wFiQodKrVuTQdEJYk8j4RtfX56rP
 VITE_SOLANA_NETWORK=devnet
 ```
 
@@ -61,26 +61,31 @@ The app will be available at `http://localhost:3000`
 ## Usage Guide
 
 ### 1. Connect Wallet
+
 - Click "Connect with Privy"
 - Choose connection method (email, SMS, or existing wallet)
 - Privy will create a Solana wallet for you if you don't have one
 
 ### 2. Get Devnet SOL
+
 - Click "Request Airdrop" button to get 1 SOL on devnet
 - Wait for confirmation (usually a few seconds)
 - Your balance will update automatically
 
 ### 3. Check Vault
+
 - Your vault address is automatically derived from your wallet
 - This is a PDA (Program Derived Address) specific to your wallet
 
 ### 4. Place a Bet
+
 - Enter amount (minimum 0.1 SOL)
 - Choose heads or tails
 - Click "Place Bet"
 - Watch the transaction log for status updates
 
 ### 5. Monitor Results
+
 - Transaction log updates every 5 seconds
 - Click transaction IDs to view on Solana Explorer
 - See win/loss status and payouts
@@ -139,17 +144,20 @@ The UI communicates with the backend API:
 ## Troubleshooting
 
 ### Airdrop Fails
+
 - Devnet faucet has rate limits
 - Try using the official faucet at [faucet.solana.com](https://faucet.solana.com)
 - Wait a few minutes between requests
 
 ### Bet Not Processing
+
 - Check if backend API is running on `localhost:3001`
 - Verify processor service is running
 - Check browser console for errors
 - Ensure `USE_REAL_SOLANA=true` in backend .env
 
 ### Transaction Not Appearing
+
 - Backend may be in simulation mode
 - Check processor logs for errors
 - Verify Program ID matches deployed contract
@@ -174,13 +182,13 @@ npm run preview
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `VITE_PRIVY_APP_ID` | Your Privy App ID | Required |
-| `VITE_API_BASE_URL` | Backend API URL | `http://localhost:3001` |
-| `VITE_SOLANA_RPC_URL` | Solana RPC endpoint | `https://api.devnet.solana.com` |
-| `VITE_VAULT_PROGRAM_ID` | Deployed program ID | See .env |
-| `VITE_SOLANA_NETWORK` | Network cluster | `devnet` |
+| Variable                | Description         | Default                         |
+| ----------------------- | ------------------- | ------------------------------- |
+| `VITE_PRIVY_APP_ID`     | Your Privy App ID   | Required                        |
+| `VITE_API_BASE_URL`     | Backend API URL     | `http://localhost:3001`         |
+| `VITE_SOLANA_RPC_URL`   | Solana RPC endpoint | `https://api.devnet.solana.com` |
+| `VITE_VAULT_PROGRAM_ID` | Deployed program ID | See .env                        |
+| `VITE_SOLANA_NETWORK`   | Network cluster     | `devnet`                        |
 
 ## Tech Stack
 

@@ -7,25 +7,27 @@ import {
   TransactionInstruction,
   type TransactionSignature,
   VersionedTransaction,
-} from '@solana/web3.js';
-import type { SendTransactionOptions } from '@solana/wallet-adapter-base';
+} from "@solana/web3.js";
+import type { SendTransactionOptions } from "@solana/wallet-adapter-base";
 
-const RPC_URL = import.meta.env.VITE_SOLANA_RPC_URL || 'https://api.devnet.solana.com';
+const RPC_URL =
+  import.meta.env.VITE_SOLANA_RPC_URL || "https://api.devnet.solana.com";
 const VAULT_PROGRAM_ID = import.meta.env.VITE_VAULT_PROGRAM_ID;
-const SOLANA_NETWORK = (import.meta.env.VITE_SOLANA_NETWORK || 'devnet') as string;
+const SOLANA_NETWORK = (import.meta.env.VITE_SOLANA_NETWORK ||
+  "devnet") as string;
 
 type SendTransactionFn = (
   transaction: Transaction | VersionedTransaction,
   connection: Connection,
-  options?: SendTransactionOptions
+  options?: SendTransactionOptions,
 ) => Promise<TransactionSignature>;
 
 type SignTransactionFn = (
-  transaction: Transaction | VersionedTransaction
+  transaction: Transaction | VersionedTransaction,
 ) => Promise<Transaction | VersionedTransaction>;
 
 type SignAllTransactionsFn = (
-  transactions: (Transaction | VersionedTransaction)[]
+  transactions: (Transaction | VersionedTransaction)[],
 ) => Promise<(Transaction | VersionedTransaction)[]>;
 
 function sleep(ms: number): Promise<void> {
@@ -37,10 +39,10 @@ function isRateLimitError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return (
     anyErr?.code === 429 ||
-    msg.includes(' 429') ||
+    msg.includes(" 429") ||
     msg.includes('code": 429') ||
-    msg.toLowerCase().includes('too many requests') ||
-    msg.toLowerCase().includes('rate limit')
+    msg.toLowerCase().includes("too many requests") ||
+    msg.toLowerCase().includes("rate limit")
   );
 }
 
@@ -68,7 +70,10 @@ function releaseRpcSlot(): void {
   if (next) next();
 }
 
-async function withRateLimitRetry<T>(fn: () => Promise<T>, opts?: { retries?: number; baseDelayMs?: number }): Promise<T> {
+async function withRateLimitRetry<T>(
+  fn: () => Promise<T>,
+  opts?: { retries?: number; baseDelayMs?: number },
+): Promise<T> {
   const retries = opts?.retries ?? 2;
   const baseDelayMs = opts?.baseDelayMs ?? 1000;
   let attempt = 0;
@@ -251,7 +256,8 @@ function parseAllowanceAccount(data: Buffer): AllowanceAccountState {
   off += 8;
   const spendCount = data.readUInt32LE(off);
 
-  const remainingLamports = amountLamports > spentLamports ? amountLamports - spentLamports : 0n;
+  const remainingLamports =
+    amountLamports > spentLamports ? amountLamports - spentLamports : 0n;
 
   return {
     user: user.toBase58(),
@@ -270,12 +276,16 @@ function parseAllowanceAccount(data: Buffer): AllowanceAccountState {
   };
 }
 
-function parseAllowanceNonceRegistryAccount(data: Buffer): AllowanceNonceRegistryState {
+function parseAllowanceNonceRegistryAccount(
+  data: Buffer,
+): AllowanceNonceRegistryState {
   // Anchor account layout: 8-byte discriminator + fields.
   // AllowanceNonceRegistry fields: user(32) casino(32) next_nonce(u64) bump(u8)
   const minLen = 8 + 32 + 32 + 8 + 1;
   if (data.length < minLen) {
-    throw new Error(`AllowanceNonceRegistry account data too small: ${data.length} bytes`);
+    throw new Error(
+      `AllowanceNonceRegistry account data too small: ${data.length} bytes`,
+    );
   }
 
   let off = 8;
@@ -311,13 +321,15 @@ async function anchorDiscriminator(ixName: string): Promise<Buffer> {
   // Anchor: first 8 bytes of sha256("global:<ix_name>")
   const preimage = new TextEncoder().encode(`global:${ixName}`);
   if (!globalThis.crypto?.subtle?.digest) {
-    throw new Error('WebCrypto not available: cannot compute Anchor discriminator');
+    throw new Error(
+      "WebCrypto not available: cannot compute Anchor discriminator",
+    );
   }
   const bytes: ArrayBuffer = preimage.buffer.slice(
     preimage.byteOffset,
-    preimage.byteOffset + preimage.byteLength
+    preimage.byteOffset + preimage.byteLength,
   ) as ArrayBuffer;
-  const hash = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+  const hash = await globalThis.crypto.subtle.digest("SHA-256", bytes);
   return Buffer.from(hash).subarray(0, 8);
 }
 
@@ -326,14 +338,32 @@ async function buildIxData(ixName: string, args?: Buffer[]): Promise<Buffer> {
   return Buffer.concat([disc, ...(args || [])]);
 }
 
+function createUniqueMemoInstruction(): TransactionInstruction {
+  // Create a memo with timestamp to make each transaction unique
+  // This prevents Solana's transaction deduplication from rejecting retries
+  const memo = `atomik-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const memoData = Buffer.from(memo, "utf-8");
+
+  // Memo program ID on Solana
+  const MEMO_PROGRAM_ID = new PublicKey(
+    "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+  );
+
+  return new TransactionInstruction({
+    keys: [],
+    programId: MEMO_PROGRAM_ID,
+    data: memoData,
+  });
+}
+
 function isUserRejectedError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return (
-    msg.toLowerCase().includes('user rejected') ||
-    msg.toLowerCase().includes('user declined') ||
-    msg.toLowerCase().includes('rejected the request') ||
-    msg.toLowerCase().includes('request rejected') ||
-    msg.toLowerCase().includes('denied')
+    msg.toLowerCase().includes("user rejected") ||
+    msg.toLowerCase().includes("user declined") ||
+    msg.toLowerCase().includes("rejected the request") ||
+    msg.toLowerCase().includes("request rejected") ||
+    msg.toLowerCase().includes("denied")
   );
 }
 
@@ -341,18 +371,26 @@ function extractCustomProgramErrorCode(err: unknown): number | null {
   const anyErr = err as any;
 
   // Prefer structured fields we attach.
-  const structuredCandidates: unknown[] = [anyErr?.statusErr, anyErr?.status?.err, anyErr?.simErr].filter(Boolean);
+  const structuredCandidates: unknown[] = [
+    anyErr?.statusErr,
+    anyErr?.status?.err,
+    anyErr?.simErr,
+  ].filter(Boolean);
   for (const candidate of structuredCandidates) {
     const c: any = candidate as any;
 
     // Shape: { InstructionError: [ixIndex, { Custom: n }] }
-    if (c && typeof c === 'object' && 'InstructionError' in c) {
+    if (c && typeof c === "object" && "InstructionError" in c) {
       const ie = (c as any).InstructionError;
       if (Array.isArray(ie) && ie.length >= 2) {
         const detail = ie[1];
-        if (detail && typeof detail === 'object' && 'Custom' in (detail as any)) {
+        if (
+          detail &&
+          typeof detail === "object" &&
+          "Custom" in (detail as any)
+        ) {
           const code = (detail as any).Custom;
-          if (typeof code === 'number' && Number.isFinite(code)) return code;
+          if (typeof code === "number" && Number.isFinite(code)) return code;
         }
       }
     }
@@ -360,9 +398,9 @@ function extractCustomProgramErrorCode(err: unknown): number | null {
     // Some RPCs return InstructionError as a tuple-like array at the top-level.
     if (Array.isArray(c) && c.length >= 2) {
       const detail = c[1];
-      if (detail && typeof detail === 'object' && 'Custom' in (detail as any)) {
+      if (detail && typeof detail === "object" && "Custom" in (detail as any)) {
         const code = (detail as any).Custom;
-        if (typeof code === 'number' && Number.isFinite(code)) return code;
+        if (typeof code === "number" && Number.isFinite(code)) return code;
       }
     }
   }
@@ -385,8 +423,8 @@ function extractCustomProgramErrorCode(err: unknown): number | null {
 async function confirmSignatureRobust(
   connection: Connection,
   args: { signature: string; blockhash: string; lastValidBlockHeight: number },
-  commitment: 'processed' | 'confirmed' | 'finalized' = 'confirmed',
-  opts?: { timeoutMs?: number; pollIntervalMs?: number }
+  commitment: "processed" | "confirmed" | "finalized" = "confirmed",
+  opts?: { timeoutMs?: number; pollIntervalMs?: number },
 ): Promise<void> {
   // NOTE: Using confirmTransaction with lastValidBlockHeight can produce
   // TransactionExpiredBlockheightExceededError under slow RPC / backoff.
@@ -397,31 +435,42 @@ async function confirmSignatureRobust(
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const statuses = await withRateLimitRetry(() =>
-      connection.getSignatureStatuses([args.signature], { searchTransactionHistory: true })
+      connection.getSignatureStatuses([args.signature], {
+        searchTransactionHistory: true,
+      }),
     );
     const status = statuses.value[0];
     if (status) {
       if (status.err) {
-        const wrapped = new Error(`Transaction failed: ${JSON.stringify(status.err)}`);
+        const wrapped = new Error(
+          `Transaction failed: ${JSON.stringify(status.err)}`,
+        );
         (wrapped as any).signature = args.signature;
         (wrapped as any).status = status;
         (wrapped as any).statusErr = status.err;
-        (wrapped as any).customErrorCode = extractCustomProgramErrorCode(wrapped);
+        (wrapped as any).customErrorCode =
+          extractCustomProgramErrorCode(wrapped);
         throw wrapped;
       }
 
-      if (commitment === 'processed') return;
-      if (commitment === 'confirmed') {
-        if (status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized') return;
+      if (commitment === "processed") return;
+      if (commitment === "confirmed") {
+        if (
+          status.confirmationStatus === "confirmed" ||
+          status.confirmationStatus === "finalized"
+        )
+          return;
       } else {
-        if (status.confirmationStatus === 'finalized') return;
+        if (status.confirmationStatus === "finalized") return;
       }
     }
 
     await sleep(pollIntervalMs);
   }
 
-  const timeoutErr = new Error(`Confirmation timed out after ${Math.round(timeoutMs / 1000)}s for signature ${args.signature}`);
+  const timeoutErr = new Error(
+    `Confirmation timed out after ${Math.round(timeoutMs / 1000)}s for signature ${args.signature}`,
+  );
   (timeoutErr as any).signature = args.signature;
   throw timeoutErr;
 }
@@ -429,9 +478,11 @@ async function confirmSignatureRobust(
 async function signSendAndConfirm(
   connection: Connection,
   signTransaction: SignTransactionFn,
-  tx: Transaction | VersionedTransaction
+  tx: Transaction | VersionedTransaction,
 ): Promise<string> {
-  const latest = await withRateLimitRetry(() => connection.getLatestBlockhash('confirmed'));
+  const latest = await withRateLimitRetry(() =>
+    connection.getLatestBlockhash("confirmed"),
+  );
   if (tx instanceof Transaction) {
     tx.recentBlockhash = latest.blockhash;
   }
@@ -441,9 +492,9 @@ async function signSendAndConfirm(
   const sig = await withRateLimitRetry(() =>
     connection.sendRawTransaction(raw, {
       skipPreflight: false,
-      preflightCommitment: 'confirmed',
+      preflightCommitment: "confirmed",
       maxRetries: 3,
-    })
+    }),
   );
 
   await confirmSignatureRobust(
@@ -453,7 +504,7 @@ async function signSendAndConfirm(
       blockhash: latest.blockhash,
       lastValidBlockHeight: latest.lastValidBlockHeight,
     },
-    'confirmed'
+    "confirmed",
   );
 
   return sig;
@@ -463,16 +514,18 @@ async function sendAndConfirm(
   connection: Connection,
   sendTransaction: SendTransactionFn,
   tx: Transaction | VersionedTransaction,
-  opts?: { signTransaction?: SignTransactionFn }
+  opts?: { signTransaction?: SignTransactionFn },
 ): Promise<string> {
-  const latest = await withRateLimitRetry(() => connection.getLatestBlockhash('confirmed'));
+  const latest = await withRateLimitRetry(() =>
+    connection.getLatestBlockhash("confirmed"),
+  );
   if (tx instanceof Transaction) {
     tx.recentBlockhash = latest.blockhash;
   }
   try {
     const sig = await sendTransaction(tx, connection, {
       skipPreflight: false,
-      preflightCommitment: 'confirmed',
+      preflightCommitment: "confirmed",
       maxRetries: 3,
     });
 
@@ -483,7 +536,7 @@ async function sendAndConfirm(
         blockhash: latest.blockhash,
         lastValidBlockHeight: latest.lastValidBlockHeight,
       },
-      'confirmed'
+      "confirmed",
     );
     return sig;
   } catch (err) {
@@ -497,7 +550,7 @@ async function sendAndConfirm(
       } catch (fallbackErr) {
         // Keep original error as the primary cause, but attach fallback failure.
         const wrapped = new Error(
-          `Wallet send failed, and raw-send fallback also failed: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`
+          `Wallet send failed, and raw-send fallback also failed: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`,
         );
         (wrapped as any).cause = err;
         (wrapped as any).fallbackCause = fallbackErr;
@@ -507,7 +560,9 @@ async function sendAndConfirm(
 
     // Attempt to surface useful program logs by simulating the transaction.
     try {
-      const simLatest = await withRateLimitRetry(() => connection.getLatestBlockhash('confirmed'));
+      const simLatest = await withRateLimitRetry(() =>
+        connection.getLatestBlockhash("confirmed"),
+      );
       // We do not verify signatures here; we only want logs.
       // web3.js has separate overloads for Transaction vs VersionedTransaction.
       // To consistently force sigVerify=false, simulate a VersionedTransaction.
@@ -516,7 +571,9 @@ async function sendAndConfirm(
         simTx = tx;
       } else {
         if (!tx.feePayer) {
-          throw new Error('Cannot simulate legacy transaction without feePayer');
+          throw new Error(
+            "Cannot simulate legacy transaction without feePayer",
+          );
         }
         const msg = new TransactionMessage({
           payerKey: tx.feePayer,
@@ -528,15 +585,17 @@ async function sendAndConfirm(
 
       const sim = await withRateLimitRetry(() =>
         connection.simulateTransaction(simTx, {
-          commitment: 'confirmed',
+          commitment: "confirmed",
           sigVerify: false,
           replaceRecentBlockhash: true,
-        })
+        }),
       );
       const logs = sim.value.logs || [];
-      const errMsg = (sim.value.err ? JSON.stringify(sim.value.err) : null) || (err instanceof Error ? err.message : String(err));
+      const errMsg =
+        (sim.value.err ? JSON.stringify(sim.value.err) : null) ||
+        (err instanceof Error ? err.message : String(err));
       const wrapped = new Error(
-        `Transaction failed during simulation: ${errMsg}${logs.length ? `\n\nProgram logs:\n${logs.join('\n')}` : ''}`
+        `Transaction failed during simulation: ${errMsg}${logs.length ? `\n\nProgram logs:\n${logs.join("\n")}` : ""}`,
       );
       (wrapped as any).cause = err;
       (wrapped as any).logs = logs;
@@ -554,9 +613,9 @@ export class SolanaService {
   private programId: PublicKey;
 
   constructor() {
-    this.connection = new Connection(RPC_URL, 'confirmed');
+    this.connection = new Connection(RPC_URL, "confirmed");
     if (!VAULT_PROGRAM_ID) {
-      throw new Error('Missing VITE_VAULT_PROGRAM_ID');
+      throw new Error("Missing VITE_VAULT_PROGRAM_ID");
     }
     this.programId = new PublicKey(VAULT_PROGRAM_ID);
   }
@@ -577,7 +636,10 @@ export class SolanaService {
     return RPC_URL;
   }
 
-  async getBalance(publicKey: string, connection?: Connection): Promise<number> {
+  async getBalance(
+    publicKey: string,
+    connection?: Connection,
+  ): Promise<number> {
     const conn = connection ?? this.connection;
     const pubKey = new PublicKey(publicKey);
     const balance = await withRateLimitRetry(() => conn.getBalance(pubKey));
@@ -589,20 +651,24 @@ export class SolanaService {
       const userPubKey = new PublicKey(userPublicKey);
       const casino = await this.deriveCasinoPDA();
       const [vaultPDA] = PublicKey.findProgramAddressSync(
-        [Buffer.from('vault'), new PublicKey(casino).toBuffer(), userPubKey.toBuffer()],
-        this.programId
+        [
+          Buffer.from("vault"),
+          new PublicKey(casino).toBuffer(),
+          userPubKey.toBuffer(),
+        ],
+        this.programId,
       );
       return vaultPDA.toBase58();
     } catch (error) {
-      console.error('Failed to derive vault PDA:', error);
+      console.error("Failed to derive vault PDA:", error);
       throw error;
     }
   }
 
   async deriveCasinoPDA(): Promise<string> {
     const [casinoPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from('casino')],
-      this.programId
+      [Buffer.from("casino")],
+      this.programId,
     );
     return casinoPda.toBase58();
   }
@@ -610,8 +676,8 @@ export class SolanaService {
   async deriveVaultAuthorityPDA(): Promise<string> {
     const casino = new PublicKey(await this.deriveCasinoPDA());
     const [vaultAuthority] = PublicKey.findProgramAddressSync(
-      [Buffer.from('vault-authority'), casino.toBuffer()],
-      this.programId
+      [Buffer.from("vault-authority"), casino.toBuffer()],
+      this.programId,
     );
     return vaultAuthority.toBase58();
   }
@@ -619,18 +685,23 @@ export class SolanaService {
   async deriveRateLimiterPDA(userPublicKey: string): Promise<string> {
     const user = new PublicKey(userPublicKey);
     const [rateLimiter] = PublicKey.findProgramAddressSync(
-      [Buffer.from('rate-limiter'), user.toBuffer()],
-      this.programId
+      [Buffer.from("rate-limiter"), user.toBuffer()],
+      this.programId,
     );
     return rateLimiter.toBase58();
   }
 
-  async deriveAllowanceNonceRegistryPDA(params: { userPublicKey: string; casinoPda?: string }): Promise<string> {
+  async deriveAllowanceNonceRegistryPDA(params: {
+    userPublicKey: string;
+    casinoPda?: string;
+  }): Promise<string> {
     const user = new PublicKey(params.userPublicKey);
-    const casino = new PublicKey(params.casinoPda ?? (await this.deriveCasinoPDA()));
+    const casino = new PublicKey(
+      params.casinoPda ?? (await this.deriveCasinoPDA()),
+    );
     const [registry] = PublicKey.findProgramAddressSync(
-      [Buffer.from('allowance-nonce'), user.toBuffer(), casino.toBuffer()],
-      this.programId
+      [Buffer.from("allowance-nonce"), user.toBuffer(), casino.toBuffer()],
+      this.programId,
     );
     return registry.toBase58();
   }
@@ -647,22 +718,29 @@ export class SolanaService {
       casinoPda,
     });
 
-    const info = await withRateLimitRetry(() => conn.getAccountInfo(new PublicKey(registryPda), 'confirmed'));
+    const info = await withRateLimitRetry(() =>
+      conn.getAccountInfo(new PublicKey(registryPda), "confirmed"),
+    );
     if (!info) return 0n;
     const data = Buffer.from(info.data);
     const state = parseAllowanceNonceRegistryAccount(data);
     return state.nextNonce;
   }
 
-  async getAccountExists(address: string, connection?: Connection): Promise<boolean> {
+  async getAccountExists(
+    address: string,
+    connection?: Connection,
+  ): Promise<boolean> {
     const conn = connection ?? this.connection;
-    const info = await withRateLimitRetry(() => conn.getAccountInfo(new PublicKey(address), 'confirmed'));
+    const info = await withRateLimitRetry(() =>
+      conn.getAccountInfo(new PublicKey(address), "confirmed"),
+    );
     return info !== null;
   }
 
   async getVaultInfoByAddress(
     address: string,
-    connection?: Connection
+    connection?: Connection,
   ): Promise<{
     exists: boolean;
     address: string;
@@ -670,7 +748,9 @@ export class SolanaService {
     state: VaultAccountState | null;
   }> {
     const conn = connection ?? this.connection;
-    const info = await withRateLimitRetry(() => conn.getAccountInfo(new PublicKey(address), 'confirmed'));
+    const info = await withRateLimitRetry(() =>
+      conn.getAccountInfo(new PublicKey(address), "confirmed"),
+    );
     if (!info) {
       return { exists: false, address, lamports: null, state: null };
     }
@@ -700,7 +780,7 @@ export class SolanaService {
 
   async getAllowanceInfoByAddress(
     address: string,
-    connection?: Connection
+    connection?: Connection,
   ): Promise<{
     exists: boolean;
     address: string;
@@ -708,7 +788,9 @@ export class SolanaService {
     state: AllowanceAccountState | null;
   }> {
     const conn = connection ?? this.connection;
-    const info = await withRateLimitRetry(() => conn.getAccountInfo(new PublicKey(address), 'confirmed'));
+    const info = await withRateLimitRetry(() =>
+      conn.getAccountInfo(new PublicKey(address), "confirmed"),
+    );
     if (!info) {
       return { exists: false, address, lamports: null, state: null };
     }
@@ -725,7 +807,7 @@ export class SolanaService {
 
   async getCasinoInfoByAddress(
     address: string,
-    connection?: Connection
+    connection?: Connection,
   ): Promise<{
     exists: boolean;
     address: string;
@@ -733,7 +815,9 @@ export class SolanaService {
     state: CasinoAccountState | null;
   }> {
     const conn = connection ?? this.connection;
-    const info = await withRateLimitRetry(() => conn.getAccountInfo(new PublicKey(address), 'confirmed'));
+    const info = await withRateLimitRetry(() =>
+      conn.getAccountInfo(new PublicKey(address), "confirmed"),
+    );
     if (!info) {
       return { exists: false, address, lamports: null, state: null };
     }
@@ -763,25 +847,37 @@ export class SolanaService {
     sendTransaction: SendTransactionFn;
     signTransaction?: SignTransactionFn;
     connection?: Connection;
-  }): Promise<{ signature: string; casinoPda: string; vaultAuthorityPda: string }> {
+  }): Promise<{
+    signature: string;
+    casinoPda: string;
+    vaultAuthorityPda: string;
+  }> {
     const connection = params.connection ?? this.connection;
     const casinoPda = await this.deriveCasinoPDA();
     const vaultAuthorityPda = await this.deriveVaultAuthorityPDA();
 
-    const data = await buildIxData('initialize_casino_vault', [params.authority.toBuffer()]);
+    const data = await buildIxData("initialize_casino_vault", [
+      params.authority.toBuffer(),
+    ]);
 
     const ix = new TransactionInstruction({
       programId: this.programId,
       keys: [
         { pubkey: new PublicKey(casinoPda), isSigner: false, isWritable: true },
-        { pubkey: new PublicKey(vaultAuthorityPda), isSigner: false, isWritable: false },
+        {
+          pubkey: new PublicKey(vaultAuthorityPda),
+          isSigner: false,
+          isWritable: false,
+        },
         { pubkey: params.authority, isSigner: true, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data,
     });
 
-    const tx = new Transaction().add(ix);
+    // Add unique memo to prevent transaction deduplication errors
+    const memoIx = createUniqueMemoInstruction();
+    const tx = new Transaction().add(memoIx).add(ix);
     tx.feePayer = params.authority;
 
     const signature = params.signTransaction
@@ -800,20 +896,26 @@ export class SolanaService {
     const casinoPda = await this.deriveCasinoPDA();
     const vaultPda = await this.deriveVaultPDA(params.user.toBase58());
 
-    const data = await buildIxData('initialize_vault');
+    const data = await buildIxData("initialize_vault");
 
     const ix = new TransactionInstruction({
       programId: this.programId,
       keys: [
         { pubkey: new PublicKey(vaultPda), isSigner: false, isWritable: true },
-        { pubkey: new PublicKey(casinoPda), isSigner: false, isWritable: false },
+        {
+          pubkey: new PublicKey(casinoPda),
+          isSigner: false,
+          isWritable: false,
+        },
         { pubkey: params.user, isSigner: true, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data,
     });
 
-    const tx = new Transaction().add(ix);
+    // Add unique memo to prevent transaction deduplication errors
+    const memoIx = createUniqueMemoInstruction();
+    const tx = new Transaction().add(memoIx).add(ix);
     tx.feePayer = params.user;
 
     const signature = params.signTransaction
@@ -833,13 +935,19 @@ export class SolanaService {
     const casinoPda = await this.deriveCasinoPDA();
     const vaultPda = await this.deriveVaultPDA(params.user.toBase58());
 
-    const data = await buildIxData('deposit_sol', [u64ToLeBytes(params.amountLamports)]);
+    const data = await buildIxData("deposit_sol", [
+      u64ToLeBytes(params.amountLamports),
+    ]);
 
     const ix = new TransactionInstruction({
       programId: this.programId,
       keys: [
         { pubkey: new PublicKey(vaultPda), isSigner: false, isWritable: true },
-        { pubkey: new PublicKey(casinoPda), isSigner: false, isWritable: false },
+        {
+          pubkey: new PublicKey(casinoPda),
+          isSigner: false,
+          isWritable: false,
+        },
         { pubkey: params.user, isSigner: true, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
@@ -865,13 +973,19 @@ export class SolanaService {
     const casinoPda = await this.deriveCasinoPDA();
     const vaultPda = await this.deriveVaultPDA(params.user.toBase58());
 
-    const data = await buildIxData('withdraw_sol', [u64ToLeBytes(params.amountLamports)]);
+    const data = await buildIxData("withdraw_sol", [
+      u64ToLeBytes(params.amountLamports),
+    ]);
 
     const ix = new TransactionInstruction({
       programId: this.programId,
       keys: [
         { pubkey: new PublicKey(vaultPda), isSigner: false, isWritable: true },
-        { pubkey: new PublicKey(casinoPda), isSigner: false, isWritable: false },
+        {
+          pubkey: new PublicKey(casinoPda),
+          isSigner: false,
+          isWritable: false,
+        },
         { pubkey: params.user, isSigner: true, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
@@ -899,7 +1013,9 @@ export class SolanaService {
 
     const casinoPda = await this.deriveCasinoPDA();
     const vaultPda = await this.deriveVaultPDA(params.user.toBase58());
-    const rateLimiterPda = await this.deriveRateLimiterPDA(params.user.toBase58());
+    const rateLimiterPda = await this.deriveRateLimiterPDA(
+      params.user.toBase58(),
+    );
 
     // Nonce-based deterministic allowance PDA (v2):
     // - Read `next_nonce` from AllowanceNonceRegistry PDA (or 0 if missing)
@@ -907,17 +1023,41 @@ export class SolanaService {
     // - Call `approve_allowance_v2` with the nonce
 
     const casinoPk = new PublicKey(casinoPda);
-    const nonce = await this.getNextAllowanceNonce({ user: params.user, casinoPda, connection });
+    const nonce = await this.getNextAllowanceNonce({
+      user: params.user,
+      casinoPda,
+      connection,
+    });
     const [registryPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from('allowance-nonce'), params.user.toBuffer(), casinoPk.toBuffer()],
-      this.programId
+      [
+        Buffer.from("allowance-nonce"),
+        params.user.toBuffer(),
+        casinoPk.toBuffer(),
+      ],
+      this.programId,
     );
     const [allowancePda] = PublicKey.findProgramAddressSync(
-      [Buffer.from('allowance'), params.user.toBuffer(), casinoPk.toBuffer(), u64ToLeBytes(nonce)],
-      this.programId
+      [
+        Buffer.from("allowance"),
+        params.user.toBuffer(),
+        casinoPk.toBuffer(),
+        u64ToLeBytes(nonce),
+      ],
+      this.programId,
     );
 
-    const data = await buildIxData('approve_allowance_v2', [
+    console.log("🔍 Approve Allowance Transaction Details:");
+    console.log("  Nonce:", nonce.toString());
+    console.log("  Allowance PDA:", allowancePda.toBase58());
+    console.log("  Vault PDA:", vaultPda);
+    console.log(
+      "  Amount:",
+      (Number(params.amountLamports) / 1e9).toFixed(9),
+      "SOL",
+    );
+    console.log("  Duration:", params.durationSeconds.toString(), "seconds");
+
+    const data = await buildIxData("approve_allowance_v2", [
       u64ToLeBytes(params.amountLamports),
       i64ToLeBytes(params.durationSeconds),
       SystemProgram.programId.toBuffer(),
@@ -931,22 +1071,70 @@ export class SolanaService {
         { pubkey: casinoPk, isSigner: false, isWritable: false },
         { pubkey: registryPda, isSigner: false, isWritable: true },
         { pubkey: allowancePda, isSigner: false, isWritable: true },
-        { pubkey: new PublicKey(rateLimiterPda), isSigner: false, isWritable: true },
+        {
+          pubkey: new PublicKey(rateLimiterPda),
+          isSigner: false,
+          isWritable: true,
+        },
         { pubkey: params.user, isSigner: true, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data,
     });
 
-    const tx = new Transaction().add(ix);
+    // Add unique memo to prevent transaction deduplication
+    const memoIx = createUniqueMemoInstruction();
+    console.log("  Memo instruction data:", memoIx.data.toString("utf-8"));
+
+    const tx = new Transaction().add(memoIx).add(ix);
     tx.feePayer = params.user;
+
+    console.log("  Total instructions in tx:", tx.instructions.length);
+    console.log("  Fee payer:", params.user.toBase58());
+
     try {
-      const signature = params.signTransaction
-        ? await signSendAndConfirm(connection, params.signTransaction, tx)
-        : await sendAndConfirm(connection, params.sendTransaction, tx);
-      return { signature, allowancePda: allowancePda.toBase58(), usedNonce: nonce };
+      // First try with preflight to get detailed error, then retry without if needed
+      const signature = await params.sendTransaction(tx, connection, {
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+      });
+
+      // Wait for confirmation
+      await connection.confirmTransaction(signature, "confirmed");
+
+      console.log("✅ Allowance approved! Signature:", signature);
+      return {
+        signature,
+        allowancePda: allowancePda.toBase58(),
+        usedNonce: nonce,
+      };
     } catch (err) {
-      if (isUserRejectedError(err)) throw new Error('User cancelled allowance approval');
+      console.error("❌ Allowance approval failed:", err);
+
+      // If it's "already processed", try again with skipPreflight
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (errMsg.toLowerCase().includes("already been processed")) {
+        console.log("🔄 Retrying with skipPreflight: true...");
+        try {
+          const signature = await params.sendTransaction(tx, connection, {
+            skipPreflight: true,
+            preflightCommitment: "confirmed",
+          });
+          await connection.confirmTransaction(signature, "confirmed");
+          console.log("✅ Allowance approved! Signature:", signature);
+          return {
+            signature,
+            allowancePda: allowancePda.toBase58(),
+            usedNonce: nonce,
+          };
+        } catch (retryErr) {
+          console.error("❌ Retry also failed:", retryErr);
+          throw retryErr;
+        }
+      }
+
+      if (isUserRejectedError(err))
+        throw new Error("User cancelled allowance approval");
       throw err;
     }
   }
@@ -959,7 +1147,7 @@ export class SolanaService {
     connection?: Connection;
   }): Promise<{ signature: string }> {
     const connection = params.connection ?? this.connection;
-    const data = await buildIxData('revoke_allowance');
+    const data = await buildIxData("revoke_allowance");
 
     const ix = new TransactionInstruction({
       programId: this.programId,
@@ -970,7 +1158,9 @@ export class SolanaService {
       data,
     });
 
-    const tx = new Transaction().add(ix);
+    // Add unique memo to prevent transaction deduplication
+    const memoIx = createUniqueMemoInstruction();
+    const tx = new Transaction().add(memoIx).add(ix);
     tx.feePayer = params.user;
     const signature = params.signTransaction
       ? await signSendAndConfirm(connection, params.signTransaction, tx)
@@ -978,14 +1168,18 @@ export class SolanaService {
     return { signature };
   }
 
-  async requestAirdrop(publicKey: string, amount: number = 1, connection?: Connection): Promise<string> {
+  async requestAirdrop(
+    publicKey: string,
+    amount: number = 1,
+    connection?: Connection,
+  ): Promise<string> {
     const conn = connection ?? this.connection;
     const pubKey = new PublicKey(publicKey);
     const signature = await withRateLimitRetry(() =>
       conn.requestAirdrop(
         pubKey,
-        amount * 1_000_000_000 // Convert SOL to lamports
-      )
+        amount * 1_000_000_000, // Convert SOL to lamports
+      ),
     );
 
     // Wait for confirmation

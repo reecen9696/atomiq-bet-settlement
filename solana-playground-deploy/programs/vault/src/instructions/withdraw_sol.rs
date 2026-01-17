@@ -36,28 +36,10 @@ pub fn handler(ctx: Context<WithdrawSol>, amount: u64) -> Result<()> {
         VaultError::InsufficientBalance
     );
 
-    // Transfer SOL from vault to user using PDA signer
-    let casino_key = ctx.accounts.casino.key();
-    let user_key = ctx.accounts.user.key();
-    let seeds = &[
-        b"vault",
-        casino_key.as_ref(),
-        user_key.as_ref(),
-        &[vault.bump],
-    ];
-    let signer_seeds = &[&seeds[..]];
-
-    system_program::transfer(
-        CpiContext::new_with_signer(
-            ctx.accounts.system_program.to_account_info(),
-            system_program::Transfer {
-                from: vault.to_account_info(),
-                to: ctx.accounts.user.to_account_info(),
-            },
-            signer_seeds,
-        ),
-        amount,
-    )?;
+    // Direct lamports manipulation - required for accounts with data
+    // The System Program's transfer instruction cannot be used on accounts with data
+    **vault.to_account_info().try_borrow_mut_lamports()? -= amount;
+    **ctx.accounts.user.to_account_info().try_borrow_mut_lamports()? += amount;
 
     // Update vault balance
     vault.sol_balance = vault.sol_balance.safe_sub(amount)?;
