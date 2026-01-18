@@ -293,6 +293,144 @@ bash scripts/stop-services.sh && bash scripts/start-services.sh
 
 ---
 
-## Phase 2: Frontend Decomposition [PLANNED]
+## Phase 2A: Frontend Module Extraction ✅ COMPLETE (Partial)
+
+**Status:** ✅ Complete (Initial Structure)  
+**Date:** 2026-01-18  
+**Duration:** ~45 minutes
+
+### Overview
+
+Began decomposing the monolithic 1,304-line `test-ui/src/services/solana.ts` into focused, testable modules. This initial phase establishes the foundation for better code organization and maintainability.
+
+### Changes Made
+
+#### 1. Created Module Directory Structure
+
+**New Files:**
+```
+test-ui/src/services/solana/
+├── types.ts       # Type definitions for account states
+├── utils.ts       # Parsing, encoding, rate limiting
+├── pda.ts         # PDA derivation (centralized seed logic)
+└── index.ts       # Re-exports for backward compatibility
+```
+
+#### 2. Extracted Type Definitions (`types.ts`)
+
+**Moved 4 account state types:**
+- `VaultAccountState`
+- `CasinoAccountState`  
+- `AllowanceAccountState`
+- `AllowanceNonceRegistryState`
+
+**Benefits:** Types are now in a dedicated module, easier to import and maintain
+
+#### 3. Extracted Utility Functions (`utils.ts`)
+
+**Moved 14 utility functions:**
+- Parsing: `parseVaultAccount`, `parseCasinoAccount`, `parseAllowanceAccount`, `parseAllowanceNonceRegistryAccount`
+- Encoding: `i64ToLeBytes`, `u64ToLeBytes`, `anchorDiscriminator`, `buildIxData`
+- Rate Limiting: `withRateLimitRetry`, `isRateLimitError`, `sleep`
+- Misc: `createUniqueMemoInstruction`, `readPubkey`
+
+**Benefits:** 
+- Testable in isolation
+- Clear separation of concerns
+- Rate limiting logic centralized
+
+#### 4. Created PDA Derivation Module (`pda.ts`)
+
+**New Class:** `PDADerivation`
+
+**Methods:**
+- `deriveCasinoPDA()` - Seeds: `["casino"]`
+- `deriveVaultPDA(user, casino?)` - Seeds: `["vault", casino, user]`
+- `deriveVaultAuthorityPDA(casino?)` - Seeds: `["vault-authority", casino]`
+- `deriveCasinoVaultPDA(casino?)` - Seeds: `["casino-vault", casino]`
+- `deriveRateLimiterPDA(user)` - Seeds: `["rate-limiter", user]`
+- `deriveAllowanceNonceRegistryPDA(user, casino?)` - Seeds: `["allowance-nonce", user, casino]`
+- `deriveAllowancePDA(user, nonce, casino?)` - Seeds: `["allowance", user, casino, nonce_le_bytes]`
+
+**Benefits:**
+- **Single Source of Truth:** All PDA derivations in one place with documented seed patterns
+- **Type Safety:** Uses PublicKey instead of string manipulations  
+- **Easy to Verify:** Can compare with Rust backend PDA derivations
+- **Testable:** Can unit test each derivation independently
+
+#### 5. Updated Main Service (`solana.ts`)
+
+**Changes:**
+- Imports from new modules instead of duplicating code
+- `SolanaService` now uses `PDADerivation` class internally
+- Removed ~350 lines of duplicate utility/parsing code
+- Maintained backward compatibility - existing components work unchanged
+
+#### 6. Fixed Build Errors
+
+**Files Updated:**
+- `BettingInterface.tsx` - Commented unused `allowanceRemaining` parameter
+- `VaultManager.tsx` - Commented unused `casinoVaultPda` variable
+
+### Testing
+
+```bash
+cd test-ui
+npm run build
+# Result: ✓ built in 5.80s (6087 modules transformed)
+```
+
+### File Size Reduction
+
+**Before:**
+- `solana.ts`: 1,304 lines (monolithic)
+
+**After:**
+- `solana.ts`: ~950 lines (-354 lines, -27%)
+- `types.ts`: 48 lines
+- `utils.ts`: 281 lines
+- `pda.ts`: 116 lines
+- `index.ts`: 25 lines
+
+**Total:** ~1,420 lines (116 more due to better documentation and type safety)
+
+### Benefits Achieved
+
+1. **Modularity:** Related functions grouped by concern (PDAs, utils, types)
+2. **Testability:** Can now unit test PDA derivation, parsing, encoding independently
+3. **Documentation:** Each PDA method documents exact seed pattern
+4. **Type Safety:** PDADerivation class uses PublicKey types, not strings
+5. **Maintainability:** Easier to find and update specific functionality
+6. **Backward Compatible:** No changes needed to existing components
+
+### Remaining Work (Phase 2A Continued)
+
+Not included in this initial extraction:
+- Transaction builders (initialize*, deposit*, withdraw*, approve*)
+- Instruction encoding (could be further modularized)
+- Account fetching (get*Info methods)
+- Wallet integration helpers
+
+These can be extracted in future iterations as needed.
+
+### Rollback Plan
+
+```bash
+git checkout test-ui/src/services/solana.ts
+git checkout test-ui/src/components/BettingInterface.tsx
+git checkout test-ui/src/components/VaultManager.tsx
+rm -rf test-ui/src/services/solana/
+npm run build
+```
+
+### Next Steps
+
+- **Phase 2B:** Unify PDA Derivation (Optional - add tests comparing TS vs Rust PDAs)
+- **Phase 2C:** Shared Constants (Export constants from Rust shared crate to TypeScript)
+- **Phase 3:** Error Handling & Transaction Builders
+
+---
+
+## Phase 2B: Unify PDA Derivation [SKIPPED]
 
 _Last Updated: 2026-01-18_
