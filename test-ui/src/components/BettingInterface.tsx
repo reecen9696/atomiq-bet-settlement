@@ -19,7 +19,7 @@ interface BettingInterfaceProps {
 
 export function BettingInterface({
   allowanceExists,
-  allowanceRemaining,
+  // allowanceRemaining, // TODO: Use for display
 }: BettingInterfaceProps) {
   const { publicKey } = useWallet();
   const { createBet, isLoading } = useApi();

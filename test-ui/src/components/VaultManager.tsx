@@ -266,7 +266,7 @@ export function VaultManager() {
     setStatusMsg("Initializing casino vault...");
 
     try {
-      const { signature, casinoVaultPda } =
+      const { signature /* , casinoVaultPda */ } =
         await solanaService.initializeVaultOnly({
           authority: publicKey,
           sendTransaction,
