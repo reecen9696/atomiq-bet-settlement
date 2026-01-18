@@ -43,6 +43,7 @@ cargo test
 ### 2. Integration Tests
 
 **Prerequisites:**
+
 - Backend and Processor services must be running
 - Redis must be running on localhost:6379
 - Use Redis database 1 for tests (will be automatically flushed)
@@ -55,13 +56,14 @@ bash scripts/start-services.sh
 cd services/backend
 cargo test --test error_scenarios
 
-# Run processor integration tests  
+# Run processor integration tests
 cd services/processor
 cargo test --test batch_processing
 cargo test --test rpc_failover
 ```
 
 **Environment Variables:**
+
 ```bash
 export BACKEND_URL=http://localhost:3001  # Backend URL
 export REDIS_URL=redis://127.0.0.1:6379/1 # Redis test database
@@ -70,6 +72,7 @@ export REDIS_URL=redis://127.0.0.1:6379/1 # Redis test database
 ### 3. Load Tests
 
 **Prerequisites:**
+
 - Install k6: `brew install k6` (macOS) or visit https://k6.io/docs/get-started/installation/
 - Backend service must be running
 - Redis and Processor should be running for full system test
@@ -86,6 +89,7 @@ k6 run --vus 50 --duration 2m tests/load/load-test.js
 ```
 
 **Load Test Scenarios:**
+
 - Bet creation (random choices and amounts)
 - Bet retrieval by ID
 - List user bets
@@ -94,6 +98,7 @@ k6 run --vus 50 --duration 2m tests/load/load-test.js
 - Not found scenarios (3% of requests)
 
 **Performance Thresholds:**
+
 - 95% of requests < 500ms
 - Error rate < 10%
 - Failed requests < 10%
@@ -103,65 +108,78 @@ k6 run --vus 50 --duration 2m tests/load/load-test.js
 ### Backend Integration Tests (`error_scenarios.rs`)
 
 ✅ **Validation Errors**
+
 - Invalid bet amount (above maximum)
 - Missing required fields
 - Proper 400 status and error codes
 
 ✅ **Not Found Errors**
+
 - Non-existent bet ID
 - Proper 404 status and NOT_FOUND_BET code
 
 ✅ **Successful Operations**
+
 - Bet creation with valid data
 - Bet retrieval by ID
 - List user bets with pagination
 
 ✅ **Concurrent Operations**
+
 - 10+ concurrent bet creations
 - No race conditions or data corruption
 
 ✅ **Health Checks**
+
 - Health endpoint returns 200
 - Proper response format
 
 ### Processor Tests (`batch_processing.rs`)
 
 ✅ **Batch Processing**
+
 - Bets added to pending stream
 - Multiple bets processed in order
 - Batch status transitions
 
 ✅ **Error Handling**
+
 - Retry count increments on failure
 - Error codes and messages recorded
 - Failed bets marked correctly
 
 ✅ **Status Transitions**
+
 - Pending → Batched → Submitted → Completed
 - Payout and won fields populated
 
 ### RPC Failover Tests (`rpc_failover.rs`)
 
 ✅ **Retry Logic**
+
 - Automatic retries on failure
 - Success after configured retries
 - Request counting
 
 ✅ **Endpoint Failover**
+
 - Primary endpoint failure
 - Automatic switch to backup endpoint
 - Load balancing across endpoints
 
 ✅ **Circuit Breaker**
+
 - Opens after threshold failures
 - Half-open state recovery
 - Closes after successful test
 
 ✅ **Backoff Strategies**
+
 - Exponential backoff timing
 - Maximum backoff limits
 
 ✅ **Concurrent Requests**
+
 - Multiple simultaneous RPC calls
 - No race conditions
 
@@ -200,41 +218,41 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     services:
       redis:
         image: redis:7-alpine
         ports:
           - 6379:6379
-    
+
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-      
+
       - name: Run unit tests
         run: cargo test --workspace --lib
-      
+
       - name: Start services
         run: bash scripts/start-services.sh
-        
+
       - name: Run integration tests
         run: |
           cargo test --workspace --test '*'
         env:
           REDIS_URL: redis://localhost:6379/1
           BACKEND_URL: http://localhost:3001
-      
+
       - name: Install k6
         run: |
           sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
           echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
           sudo apt-get update
           sudo apt-get install k6
-      
+
       - name: Run load tests
         run: bash tests/load/run-load-test.sh
         env:
@@ -245,22 +263,26 @@ jobs:
 ## Troubleshooting
 
 ### Tests Fail with "Connection Refused"
+
 - Ensure backend/processor services are running
 - Check services are on expected ports (3001, 9091)
 - Verify Redis is accessible
 
 ### Redis Tests Fail
+
 - Ensure Redis is running: `redis-cli ping`
 - Check tests use database 1: `REDIS_URL=redis://127.0.0.1:6379/1`
 - Manually flush test DB: `redis-cli -n 1 FLUSHDB`
 
 ### Load Tests Show High Error Rates
+
 - Check backend logs for errors
 - Verify Redis can handle load
 - Increase connection pool sizes
 - Check system resources (CPU, memory)
 
 ### Processor Tests Timeout
+
 - Ensure processor is running and processing
 - Check worker pool size configuration
 - Verify Redis stream is accessible

@@ -10,7 +10,7 @@ use crate::{
     domain::{Bet, CreateBetRequest},
     errors::{AppError, Result},
     extractors::ValidatedJson,
-    repository::{bet_repository::BetRepository, RedisBetRepository},
+    repository::{BetRepository, RedisBetRepository},
     state::AppState,
 };
 

@@ -7,7 +7,11 @@ mod config;
 mod circuit_breaker;
 mod domain;
 mod retry_strategy;
+mod solana_account_parsing;
 mod solana_client;
+mod solana_instructions;
+mod solana_pda;
+mod solana_simulation;
 mod solana_tx;
 mod worker_pool;
 

@@ -1,13 +1,22 @@
-use spl_associated_token_account::get_associated_token_address;
+//! Solana transaction building and submission
+//!
+//! This module handles the complete lifecycle of submitting batch bet transactions
+//! to the Solana blockchain. It has been decomposed into focused modules for maintainability.
+
+// Re-export commonly used functions from other modules in the crate
+pub use crate::solana_account_parsing::{parse_allowance_nonce_registry_next_nonce, parse_allowance_token_mint};
+pub use crate::solana_instructions::{build_create_ata_instruction, build_payout_instruction, build_spend_from_allowance_instruction};
+pub use crate::solana_pda::{allowance_account_exists, derive_casino_pda, derive_latest_allowance_pda_from_nonce_registry, derive_user_vault_pda};
+pub use crate::solana_simulation::simulate_coinflip;
+
 use anyhow::{Context, Result};
+use spl_associated_token_account::get_associated_token_address;
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_config::RpcSimulateTransactionConfig;
 use solana_sdk::{
-    instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     signature::{Keypair, Signer},
     system_program,
-    sysvar,
     transaction::Transaction,
 };
 use std::str::FromStr;
@@ -15,43 +24,18 @@ use uuid::Uuid;
 
 use crate::domain::Bet;
 
-// Program IDs
-const SPL_TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-const SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID: &str = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
-
-fn parse_allowance_nonce_registry_next_nonce(data: &[u8]) -> Option<u64> {
-    // Anchor accounts have an 8-byte discriminator prefix.
-    // Layout: discriminator (8) | user (32) | casino (32) | next_nonce (8) | bump (1)
-    let min_len = 8 + 32 + 32 + 8;
-    if data.len() < min_len {
-        return None;
-    }
-
-    let next_nonce_offset = 8 + 32 + 32;
-    let mut buf = [0u8; 8];
-    buf.copy_from_slice(&data[next_nonce_offset..next_nonce_offset + 8]);
-    Some(u64::from_le_bytes(buf))
-}
-
-fn parse_allowance_token_mint(data: &[u8]) -> Option<Pubkey> {
-    // Anchor accounts have an 8-byte discriminator prefix.
-    // Layout (prefix only): discriminator (8) | user (32) | casino (32) | token_mint (32) | ...
-    let min_len = 8 + 32 + 32 + 32;
-    if data.len() < min_len {
-        return None;
-    }
-
-    let token_mint_offset = 8 + 32 + 32;
-    let mut buf = [0u8; 32];
-    buf.copy_from_slice(&data[token_mint_offset..token_mint_offset + 32]);
-    Some(Pubkey::new_from_array(buf))
-}
-
-fn allowance_account_exists(client: &RpcClient, allowance: &Pubkey) -> bool {
-    client.get_account(allowance).is_ok()
-}
-
 /// Build and submit a batch of bets to Solana
+///
+/// This is the main entry point for processing bet transactions. It:
+/// 1. Validates input constraints
+/// 2. Simulates coinflip outcomes for all bets
+/// 3. Builds spend_from_allowance instructions
+/// 4. Builds payout instructions for winning bets
+/// 5. Creates any missing Associated Token Accounts
+/// 6. Simulates the transaction for debugging
+/// 7. Sends and confirms the transaction
+///
+/// Returns the transaction signature and bet results
 pub async fn submit_batch_transaction(
     client: &RpcClient,
     bets: &[Bet],
@@ -280,245 +264,4 @@ pub async fn submit_batch_transaction(
     );
 
     Ok((signature.to_string(), results))
-}
-
-fn derive_latest_allowance_pda_from_nonce_registry(
-    client: &RpcClient,
-    program_id: &Pubkey,
-    user: &Pubkey,
-    casino: &Pubkey,
-) -> Result<Pubkey> {
-    let (nonce_registry, _) = Pubkey::find_program_address(
-        &[b"allowance-nonce", user.as_ref(), casino.as_ref()],
-        program_id,
-    );
-
-    let acct = client
-        .get_account(&nonce_registry)
-        .with_context(|| format!("Nonce registry account {} not found", nonce_registry))?;
-    let next_nonce = parse_allowance_nonce_registry_next_nonce(&acct.data)
-        .context("Failed to parse nonce registry next_nonce")?;
-    if next_nonce == 0 {
-        anyhow::bail!("Nonce registry next_nonce is 0 (no allowance has been approved yet)");
-    }
-
-    let nonce = next_nonce - 1;
-    let (allowance, _) = Pubkey::find_program_address(
-        &[b"allowance", user.as_ref(), casino.as_ref(), &nonce.to_le_bytes()],
-        program_id,
-    );
-
-    if !allowance_account_exists(client, &allowance) {
-        anyhow::bail!(
-            "Derived allowance PDA {} for nonce {} is not initialized",
-            allowance,
-            nonce
-        );
-    }
-
-    Ok(allowance)
-}
-
-/// Derive casino PDA
-fn derive_casino_pda(program_id: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[b"casino"], program_id)
-}
-
-/// Derive user vault PDA (requires casino PDA)
-fn derive_user_vault_pda(user_pubkey: &Pubkey, casino_pubkey: &Pubkey, program_id: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[b"vault", casino_pubkey.as_ref(), user_pubkey.as_ref()],
-        program_id,
-    )
-}
-
-/// Build spend_from_allowance instruction
-fn build_spend_from_allowance_instruction(
-    program_id: &Pubkey,
-    user_vault: &Pubkey,
-    casino: &Pubkey,
-    allowance: &Pubkey,
-    processed_bet: &Pubkey,
-    casino_vault: &Pubkey,
-    vault_authority: &Pubkey,
-    user_token_account: Option<&Pubkey>,
-    casino_token_account: Option<&Pubkey>,
-    processor: &Pubkey,
-    amount: u64,
-    bet_id: &str,
-) -> Instruction {
-    // Instruction discriminator for spend_from_allowance
-    // SHA256("global:spend_from_allowance")[0..8]
-    let mut data = vec![143, 226, 77, 235, 46, 46, 239, 222]; // spend_from_allowance discriminator
-    
-    // Serialize amount (u64)
-    data.extend_from_slice(&amount.to_le_bytes());
-    
-    // Serialize bet_id (String)
-    let bet_id_bytes = bet_id.as_bytes();
-    data.extend_from_slice(&(bet_id_bytes.len() as u32).to_le_bytes());
-    data.extend_from_slice(bet_id_bytes);
-
-    let mut accounts = vec![
-        AccountMeta::new(*user_vault, false),
-        AccountMeta::new(*casino, false),
-        AccountMeta::new(*allowance, false),
-        AccountMeta::new(*processed_bet, false),
-        AccountMeta::new(*casino_vault, false),
-        AccountMeta::new_readonly(*vault_authority, false),
-    ];
-
-    // Keep account ordering stable for Anchor optional accounts.
-    // Anchor treats an optional account as None when the provided pubkey equals program_id.
-    // Important: Must use 'new' (writable) to match the #[account(mut)] in Rust instruction,
-    // even for placeholders, otherwise Anchor may fail to recognize them as None.
-    match (user_token_account, casino_token_account) {
-        (Some(user_ta), Some(casino_ta)) => {
-            accounts.push(AccountMeta::new(*user_ta, false));
-            accounts.push(AccountMeta::new(*casino_ta, false));
-        }
-        (None, None) => {
-            accounts.push(AccountMeta::new(*program_id, false));
-            accounts.push(AccountMeta::new(*program_id, false));
-        }
-        _ => {
-            // Should never happen; treat as SOL-mode placeholders to avoid shifting.
-            accounts.push(AccountMeta::new(*program_id, false));
-            accounts.push(AccountMeta::new(*program_id, false));
-        }
-    }
-
-    accounts.push(AccountMeta::new(*processor, true));
-    accounts.push(AccountMeta::new_readonly(system_program::ID, false));
-
-    // token_program is optional on-chain; use the same placeholder convention.
-    if user_token_account.is_some() && casino_token_account.is_some() {
-        accounts.push(AccountMeta::new_readonly(
-            Pubkey::from_str(SPL_TOKEN_PROGRAM_ID).expect("Valid SPL token program ID"),
-            false,
-        ));
-    } else {
-        accounts.push(AccountMeta::new_readonly(*program_id, false));
-    }
-
-    Instruction {
-        program_id: *program_id,
-        accounts,
-        data,
-    }
-}
-
-/// Build payout instruction
-fn build_payout_instruction(
-    program_id: &Pubkey,
-    casino: &Pubkey,
-    casino_vault: &Pubkey,
-    vault_authority: &Pubkey,
-    user_vault: &Pubkey,
-    processed_bet: &Pubkey,
-    processor: &Pubkey,
-    amount: u64,
-    bet_id: &str,
-) -> Instruction {
-    // Instruction discriminator for payout
-    // SHA256("global:payout")[0..8]
-    let mut data = vec![149, 140, 194, 236, 174, 189, 6, 239]; // payout discriminator
-    
-    // Serialize amount (u64)
-    data.extend_from_slice(&amount.to_le_bytes());
-    
-    // Serialize bet_id (String)
-    let bet_id_bytes = bet_id.as_bytes();
-    data.extend_from_slice(&(bet_id_bytes.len() as u32).to_le_bytes());
-    data.extend_from_slice(bet_id_bytes);
-
-    Instruction {
-        program_id: *program_id,
-        accounts: vec![
-            AccountMeta::new(*user_vault, false),              // vault
-            AccountMeta::new(*casino, false),                   // casino (writable for stats)
-            AccountMeta::new(*casino_vault, false),             // casino_vault (program-owned, holds SOL)
-            AccountMeta::new_readonly(*vault_authority, false), // vault_authority (PDA for SPL signing)
-            // For SOL transfers, pass program_id as placeholder for optional token accounts
-            AccountMeta::new_readonly(*program_id, false),      // user_token_account (optional)
-            AccountMeta::new_readonly(*program_id, false),      // casino_token_account (optional)
-            AccountMeta::new_readonly(*processed_bet, false),   // processed_bet (reference)
-            AccountMeta::new(*processor, true),                 // processor (signer)
-            AccountMeta::new_readonly(system_program::ID, false), // system_program
-            // token_program (optional) - omit for SOL
-        ],
-        data,
-    }
-}
-
-/// Simulate coinflip outcome
-fn simulate_coinflip() -> bool {
-    use rand::Rng;
-    rand::thread_rng().gen_bool(0.5)
-}
-
-/// Build create associated token account instruction manually
-fn build_create_ata_instruction(
-    payer: &Pubkey,
-    owner: &Pubkey,
-    mint: &Pubkey,
-) -> Result<Instruction> {
-    let spl_token_program = Pubkey::from_str(SPL_TOKEN_PROGRAM_ID)
-        .map_err(|_| anyhow::anyhow!("Invalid SPL token program ID"))?;
-    let spl_ata_program = Pubkey::from_str(SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID)
-        .map_err(|_| anyhow::anyhow!("Invalid ATA program ID"))?;
-
-    // Derive the associated token account address
-    let (ata_address, _) = Pubkey::find_program_address(
-        &[
-            owner.as_ref(),
-            spl_token_program.as_ref(),
-            mint.as_ref(),
-        ],
-        &spl_ata_program,
-    );
-
-    // Build the instruction
-    Ok(Instruction {
-        program_id: spl_ata_program,
-        accounts: vec![
-            AccountMeta::new(*payer, true),           // payer
-            AccountMeta::new(ata_address, false),     // associated_token_account
-            AccountMeta::new_readonly(*owner, false), // owner
-            AccountMeta::new_readonly(*mint, false),  // mint
-            AccountMeta::new_readonly(system_program::ID, false), // system_program
-            AccountMeta::new_readonly(spl_token_program, false), // token_program
-            AccountMeta::new_readonly(sysvar::rent::ID, false), // rent
-        ],
-        data: vec![], // No data needed for ATA creation
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_derive_user_vault_pda() {
-        let user_pubkey = Pubkey::new_unique();
-        let casino_pubkey = Pubkey::new_unique();
-        let program_id = Pubkey::new_unique();
-
-        let (pda1, bump1) = derive_user_vault_pda(&user_pubkey, &casino_pubkey, &program_id);
-        let (pda2, bump2) = derive_user_vault_pda(&user_pubkey, &casino_pubkey, &program_id);
-
-        assert_eq!(pda1, pda2);
-        assert_eq!(bump1, bump2);
-    }
-
-    #[test]
-    fn test_derive_casino_pda() {
-        let program_id = Pubkey::new_unique();
-
-        let (pda1, bump1) = derive_casino_pda(&program_id);
-        let (pda2, bump2) = derive_casino_pda(&program_id);
-
-        assert_eq!(pda1, pda2);
-        assert_eq!(bump1, bump2);
-    }
 }

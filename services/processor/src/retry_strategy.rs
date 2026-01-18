@@ -1,6 +1,7 @@
 use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use std::time::Duration;
 
+#[derive(Clone)]
 pub struct RetryStrategy {
     max_retries: u32,
 }

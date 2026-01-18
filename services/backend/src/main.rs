@@ -16,7 +16,6 @@ mod extractors;
 mod handlers;
 mod middleware;
 mod repository;
-mod services;
 mod state;
 
 use config::Config;
