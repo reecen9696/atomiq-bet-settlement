@@ -492,6 +492,7 @@ _Last Updated: 2026-01-18_
   - Implements `std::error::Error` and `Display`
 
 **Convenience Constructors:**
+
 ```rust
 ServiceError::invalid_bet_id("abc-123")
 ServiceError::insufficient_balance(1_000_000, 500_000)
@@ -504,6 +505,7 @@ ServiceError::contract_execution_failed(signature, error)
 #### 2. Updated Backend Error Handling
 
 **Files Modified:**
+
 - `services/backend/src/errors.rs` (65 lines → 109 lines)
 - `services/backend/src/handlers/bets.rs` (93 lines → 133 lines)
 - `services/backend/src/main.rs` (Updated logging initialization)
@@ -520,6 +522,7 @@ ServiceError::contract_execution_failed(signature, error)
   - Increments `errors_total` metric by category and code
 
 **Structured Logging Example:**
+
 ```rust
 tracing::error!(
     error_code = %service_error.code,
@@ -531,6 +534,7 @@ tracing::error!(
 ```
 
 **Error Response Format:**
+
 ```json
 {
   "error": {
@@ -586,6 +590,7 @@ if use_json {
 #### 4. Enhanced Metrics
 
 **Existing Metrics (Retained):**
+
 - `bets_created_total` - Counter for total bets created
 - `pending_bets_fetched` - Gauge for bets claimed per batch
 - `batch_processing_duration_seconds` - Histogram for batch processing time
@@ -593,11 +598,13 @@ if use_json {
 - `worker_errors_total` - Counter for worker errors
 
 **New Metrics:**
+
 - `errors_total{category, code}` - Counter for errors by category and code
 - `batches_processed_total` - Counter for successfully processed batches
 - `batch_chunk_failures_total` - Counter for failed transaction chunks
 
 **Metrics Endpoints:**
+
 - Backend: `http://localhost:3001/metrics` (Prometheus format)
 - Processor: `http://localhost:9091/metrics` (Prometheus format)
 
@@ -606,6 +613,7 @@ if use_json {
 **File:** `ERROR_CODES.md` (New - 421 lines)
 
 **Contents:**
+
 - Complete reference for all 23 error codes
 - Category mapping to HTTP status and log levels
 - Context and usage examples for each error
@@ -628,6 +636,41 @@ cd services/backend && cargo build
 # Build processor with structured logging
 cd services/processor && cargo build
 # Result: Success (14 warnings, 0 errors)
+
+# Test error responses
+curl -X POST http://localhost:3001/api/bets \
+  -H "Content-Type: application/json" \
+  -d '{"choice": "heads", "stake_amount": 100000000, "stake_token": "SOL"}'
+# Result: {"bet":{"bet_id":"744ee6b5-...","status":"pending",...}}
+
+curl -X POST http://localhost:3001/api/bets \
+  -H "Content-Type: application/json" \
+  -d '{"choice": "heads", "stake_amount": 2000000000000, "stake_token": "SOL"}'
+# Result: {"error":{"category":"Validation","code":"VALIDATION_INVALID_INPUT","message":"Invalid request body: failed to parse JSON"}}
+
+curl http://localhost:3001/api/bets/00000000-0000-0000-0000-000000000000
+# Result: {"error":{"category":"NotFound","code":"NOT_FOUND_BET","message":"Bet 00000000-0000-0000-0000-000000000000 not found"}}
+
+# Test metrics
+curl http://localhost:9090/metrics | grep errors_total
+# Result:
+# errors_total{category="Validation",code="VALIDATION_INVALID_INPUT"} 4
+# errors_total{category="NotFound",code="NOT_FOUND_BET"} 1
+
+curl http://localhost:9091/metrics | grep batch_processing
+# Result:
+# batch_processing_duration_seconds_count 2
+# batch_processing_duration_seconds_sum 8.635864541
+
+# Test JSON logging
+export LOG_FORMAT=json
+bash scripts/start-services.sh
+curl http://localhost:3001/api/bets/00000000-0000-0000-0000-000000000000
+tail -1 logs/backend.log
+# Result: {"timestamp":"2026-01-18T04:20:10.310277Z","level":"WARN","fields":{"message":"Request validation failed","error_code":"NOT_FOUND_BET","error_category":"NotFound",...},"target":"backend::errors"}
+
+tail -1 logs/processor.log
+# Result: {"timestamp":"2026-01-18T04:20:28.490969Z","level":"INFO","fields":{"message":"Batch completed successfully","batch_id":"9ba52a37-...","duration_ms":"10",...},"target":"processor::worker_pool"}
 ```
 
 ### Configuration
@@ -639,12 +682,14 @@ cd services/processor && cargo build
   - Examples: `backend=debug`, `processor=trace,worker_pool=debug`
 
 **Production Configuration:**
+
 ```bash
 export LOG_FORMAT=json
 export RUST_LOG=backend=info,processor=info
 ```
 
 **Development Configuration:**
+
 ```bash
 export LOG_FORMAT=text
 export RUST_LOG=backend=debug,processor=debug

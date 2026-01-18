@@ -12,6 +12,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod config;
 mod domain;
 mod errors;
+mod extractors;
 mod handlers;
 mod middleware;
 mod repository;

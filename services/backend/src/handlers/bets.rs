@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::{
     domain::{Bet, CreateBetRequest},
     errors::{AppError, Result},
+    extractors::ValidatedJson,
     repository::{bet_repository::BetRepository, RedisBetRepository},
     state::AppState,
 };
@@ -28,7 +29,7 @@ pub struct CreateBetResponse {
 pub async fn create_bet(
     State(state): State<AppState>,
     // TODO: Extract user_wallet from Privy authentication
-    Json(mut req): Json<CreateBetRequest>,
+    ValidatedJson(mut req): ValidatedJson<CreateBetRequest>,
 ) -> Result<Json<CreateBetResponse>> {
     // Create a tracing span for the entire bet creation lifecycle
     let span = tracing::info_span!(
