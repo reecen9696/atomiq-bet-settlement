@@ -192,17 +192,107 @@ git checkout solana-playground-deploy/programs/vault/src/instructions/spend_from
 
 ---
 
-## Phase 1C: Backend Input Validation [PLANNED]
+## Phase 1C: Backend Input Validation ✅ COMPLETE
 
-**Status:** 📋 Planned  
-**Target Date:** 2026-01-22
+**Status:** ✅ Complete  
+**Date:** 2026-01-18  
+**Duration:** ~30 minutes
 
-### Planned Changes
+### Changes Made
 
-1. Migrate backend domain types to use `shared::BetId` and `shared::LamportAmount`
-2. Add validation in bet handlers
-3. Update repository signatures
+#### 1. Updated `domain.rs` - Added Type-Safe Request Types
+
+**File:** `services/backend/src/domain.rs`
+
+**Changes:**
+
+- Added `use shared::LamportAmount` import
+- Changed `CreateBetRequest.stake_amount` from `u64` to `LamportAmount`
+- Added custom deserializer `deserialize_lamport_amount` that validates during JSON parsing
+- Validation now happens at API boundary before any business logic
+
+**Security Impact:** Invalid bet amounts are rejected before reaching repository layer, with clear error messages
+
+#### 2. Updated `bets.rs` Handler - Removed Manual Validation
+
+**File:** `services/backend/src/handlers/bets.rs`
+
+**Changes:**
+
+```rust
+// REMOVED manual validation:
+// if (req.stake_amount as i64) < state.config.betting.min_bet_lamports as i64
+//     || (req.stake_amount as i64) > state.config.betting.max_bet_lamports as i64
+// {
+//     return Err(AppError::InvalidInput(...));
+// }
+
+// Validation is now handled by LamportAmount type during deserialization
+```
+
+**Benefits:**
+
+- Eliminated duplicate validation logic
+- Validation errors are caught at deserialization (400 Bad Request)
+- Type system guarantees valid amounts throughout request lifecycle
+
+#### 3. Updated `bet_repository.rs` - Type Conversion
+
+**File:** `services/backend/src/repository/bet_repository.rs`
+
+**Changes:**
+
+```rust
+// Convert LamportAmount to i64 for storage
+let stake_amount_i64 = req.stake_amount.as_u64() as i64;
+```
+
+**Details:**
+
+- Added `use shared::LamportAmount` import
+- Repository extracts validated u64 value from LamportAmount
+- Redis storage continues using i64 format (no schema changes needed)
+
+### Testing
+
+```bash
+cargo build -p backend
+# Result: Success (compiled in 4.95s, 9 warnings)
+
+# Services restarted
+bash scripts/stop-services.sh && bash scripts/start-services.sh
+# Result: Backend PID 8886, Processor PID 8893
+
+curl http://localhost:3001/health
+# Result: {"status":"healthy","timestamp":"2026-01-18T03:17:40.851826+00:00"}
+```
+
+### Benefits Achieved
+
+1. **Type Safety**: LamportAmount prevents invalid amounts at compile time
+2. **Validation at Boundary**: JSON deserialization validates before business logic
+3. **No Duplicate Validation**: Single source of truth for bet amount rules
+4. **Better Error Messages**: Serde provides structured error responses
+5. **Overflow Protection**: LamportAmount provides checked arithmetic
+
+### Rollback Plan
+
+If issues arise:
+
+```bash
+git checkout services/backend/src/domain.rs
+git checkout services/backend/src/handlers/bets.rs
+git checkout services/backend/src/repository/bet_repository.rs
+cargo build -p backend
+bash scripts/stop-services.sh && bash scripts/start-services.sh
+```
+
+### Next Steps
+
+- Phase 2A: Frontend Module Decomposition (extract solana.ts into separate concerns)
 
 ---
+
+## Phase 2: Frontend Decomposition [PLANNED]
 
 _Last Updated: 2026-01-18_

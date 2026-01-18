@@ -38,14 +38,8 @@ pub async fn create_bet(
         .clone()
         .unwrap_or_else(|| "TEMP_VAULT_ADDRESS".to_string());
 
-    // Validate bet amount
-    if (req.stake_amount as i64) < state.config.betting.min_bet_lamports as i64
-        || (req.stake_amount as i64) > state.config.betting.max_bet_lamports as i64
-    {
-        return Err(AppError::InvalidInput(
-            "Bet amount outside allowed range".to_string(),
-        ));
-    }
+    // Validation is now handled by LamportAmount type during deserialization
+    // No need for manual range checks
 
     let repo = RedisBetRepository::new(state.redis.clone());
     let bet = repo.create(&user_wallet, &vault_address, req).await?;

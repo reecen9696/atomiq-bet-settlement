@@ -3,6 +3,7 @@ use chrono::Utc;
 use chrono::TimeZone;
 use redis::aio::ConnectionManager;
 use redis::{AsyncCommands, Script};
+use shared::LamportAmount;
 use uuid::Uuid;
 
 use crate::domain::{Bet, BetStatus, CreateBetRequest};
@@ -201,6 +202,9 @@ impl BetRepository for RedisBetRepository {
         let now = Utc::now();
         let now_ms = now.timestamp_millis();
 
+        // Convert LamportAmount to i64 for storage
+        let stake_amount_i64 = req.stake_amount.as_u64() as i64;
+
         let bet = Bet {
             bet_id,
             created_at: now,
@@ -209,7 +213,7 @@ impl BetRepository for RedisBetRepository {
             allowance_pda: req.allowance_pda.clone().filter(|v| !v.is_empty()),
             casino_id: None,
             game_type: "coinflip".to_string(),
-            stake_amount: req.stake_amount as i64,
+            stake_amount: stake_amount_i64,
             stake_token: req.stake_token,
             choice: req.choice,
             status: BetStatus::Pending,
