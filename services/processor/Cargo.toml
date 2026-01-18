@@ -32,7 +32,7 @@ dotenvy = "0.15"
 
 # Logging
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["json", "env-filter"] }
 
 # UUID
 uuid = { workspace = true }

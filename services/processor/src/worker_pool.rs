@@ -152,6 +152,14 @@ impl Worker {
     async fn process_batch(&self) -> Result<()> {
         let start_time = std::time::Instant::now();
 
+        // Create span for entire batch processing lifecycle
+        let span = tracing::info_span!(
+            "process_batch",
+            worker_id = self.id,
+            processor_id = format!("worker-{}", self.id)
+        );
+        let _enter = span.enter();
+
         // Fetch + claim pending bets from backend (POC: local emulation of Atomiq contract)
         let processor_id = format!("worker-{}", self.id);
         let url = format!("{}/api/external/bets/pending", self.backend_base_url);
@@ -159,6 +167,12 @@ impl Worker {
         // Claim up to batch_size from the backend, then split into multiple Solana transactions
         // of at most max_bets_per_tx each.
         let claim_limit = self.config.processor.batch_size;
+
+        tracing::debug!(
+            url = %url,
+            claim_limit,
+            "Fetching pending bets"
+        );
 
         let resp: PendingBetsResponse = self
             .http
@@ -174,14 +188,15 @@ impl Worker {
             .await?;
 
         if resp.bets.is_empty() {
+            tracing::trace!("No pending bets to process");
             return Ok(());
         }
 
         tracing::info!(
-            "Worker {}: Processing {} pending bets (max {} per tx)",
-            self.id,
-            resp.bets.len(),
-            self.config.processor.max_bets_per_tx
+            batch_id = %resp.batch_id,
+            bet_count = resp.bets.len(),
+            max_bets_per_tx = self.config.processor.max_bets_per_tx,
+            "Processing batch of pending bets"
         );
 
         metrics::gauge!("pending_bets_fetched").set(resp.bets.len() as f64);
@@ -190,11 +205,24 @@ impl Worker {
         // Split into chunks so we don't exceed tx size/compute limits.
         let max_per_tx = self.config.processor.max_bets_per_tx.max(1);
 
-        for chunk in resp.bets.chunks(max_per_tx) {
+        for (chunk_idx, chunk) in resp.bets.chunks(max_per_tx).enumerate() {
+            let chunk_span = tracing::info_span!(
+                "process_chunk",
+                chunk_idx,
+                chunk_size = chunk.len()
+            );
+            let _chunk_enter = chunk_span.enter();
+
             let bet_results = self.execute_bets_on_solana(chunk).await;
 
             match bet_results {
                 Ok((signature, results)) => {
+                    tracing::info!(
+                        signature = %signature,
+                        result_count = results.len(),
+                        "Chunk executed successfully on Solana"
+                    );
+
                     // Phase 3: Mark chunk submitted
                     self.post_batch_update(
                         resp.batch_id,
@@ -226,25 +254,38 @@ impl Worker {
                             error_message: None,
                             bet_results: results
                                 .into_iter()
-                                .map(|(bet_id, won, payout_amount)| BetResult {
-                                    bet_id,
-                                    status: BetStatus::Completed,
-                                    solana_tx_id: Some(signature.clone()),
-                                    error_message: None,
-                                    won: Some(won),
-                                    payout_amount: Some(payout_amount),
+                                .map(|(bet_id, won, payout_amount)| {
+                                    tracing::debug!(
+                                        %bet_id,
+                                        won,
+                                        payout_amount,
+                                        "Bet completed"
+                                    );
+                                    BetResult {
+                                        bet_id,
+                                        status: BetStatus::Completed,
+                                        solana_tx_id: Some(signature.clone()),
+                                        error_message: None,
+                                        won: Some(won),
+                                        payout_amount: Some(payout_amount),
+                                    }
                                 })
                                 .collect(),
                         },
                     )
                     .await?;
+
+                    tracing::info!(
+                        signature = %signature,
+                        "Chunk marked as confirmed"
+                    );
                 }
                 Err(e) => {
                     tracing::error!(
-                        "Worker {}: Batch {} chunk failed: {:?}",
-                        self.id,
-                        resp.batch_id,
-                        e
+                        batch_id = %resp.batch_id,
+                        chunk_idx,
+                        error = %e,
+                        "Batch chunk failed"
                     );
 
                     // Best-effort: mark this chunk retryable again.
@@ -270,6 +311,8 @@ impl Worker {
                         )
                         .await;
 
+                    metrics::counter!("batch_chunk_failures_total").increment(1);
+
                     // Stop this worker's batch loop early; remaining bets will be re-claimed later.
                     return Err(e);
                 }
@@ -278,13 +321,14 @@ impl Worker {
 
         let elapsed = start_time.elapsed();
         tracing::info!(
-            "Worker {}: Batch {} completed in {:?}",
-            self.id,
-            resp.batch_id,
-            elapsed
+            batch_id = %resp.batch_id,
+            duration_ms = elapsed.as_millis(),
+            bet_count = resp.bets.len(),
+            "Batch completed successfully"
         );
 
         metrics::histogram!("batch_processing_duration_seconds").record(elapsed.as_secs_f64());
+        metrics::counter!("batches_processed_total").increment(1);
 
         Ok(())
     }
@@ -304,6 +348,12 @@ impl Worker {
         &self,
         bets: &[Bet],
     ) -> Result<(String, Vec<(Uuid, bool, i64)>)> {
+        let span = tracing::debug_span!(
+            "execute_bets_on_solana",
+            bet_count = bets.len()
+        );
+        let _enter = span.enter();
+
         // Check if we should use real Solana transactions
         let use_real_solana = std::env::var("USE_REAL_SOLANA")
             .unwrap_or_else(|_| "false".to_string())
@@ -316,15 +366,16 @@ impl Worker {
             for bet in bets {
                 if solana_sdk::pubkey::Pubkey::from_str(&bet.user_wallet).is_err() {
                     tracing::warn!(
-                        "Invalid user wallet pubkey for bet {} ({}); falling back to simulation",
-                        bet.bet_id,
-                        bet.user_wallet
+                        bet_id = %bet.bet_id,
+                        user_wallet = %bet.user_wallet,
+                        "Invalid user wallet pubkey; falling back to simulation"
                     );
                     return self.simulate_bets(bets).await;
                 }
             }
 
             // Real Solana transaction
+            tracing::info!("Submitting real Solana transaction");
             let client = self
                 .solana_client
                 .get_healthy_client_or_any()
@@ -334,8 +385,6 @@ impl Worker {
             let vault_program_id = solana_sdk::pubkey::Pubkey::from_str(
                 &std::env::var("VAULT_PROGRAM_ID")?
             )?;
-
-            tracing::info!("Submitting {} bets to Solana", bets.len());
             
             crate::solana_tx::submit_batch_transaction(
                 &client,
@@ -346,6 +395,7 @@ impl Worker {
             ).await
         } else {
             // Simulated transaction for testing
+            tracing::debug!("Using simulated Solana transaction");
             self.simulate_bets(bets).await
         }
     }
@@ -370,18 +420,23 @@ impl Worker {
             
             results.push((bet.bet_id, won, payout));
             
-            tracing::debug!(
-                "Bet {}: {} -> {}",
-                bet.bet_id,
-                bet.choice,
-                if won { "WON" } else { "LOST" }
+            tracing::trace!(
+                bet_id = %bet.bet_id,
+                choice = %bet.choice,
+                won,
+                payout,
+                "Bet simulated"
             );
         }
 
         // Simulate Solana transaction submission
         let signature = format!("SIM_{}", Uuid::new_v4());
 
-        tracing::info!("Simulated Solana transaction: {}", signature);
+        tracing::debug!(
+            signature = %signature,
+            bet_count = bets.len(),
+            "Simulated Solana transaction"
+        );
         
         Ok((signature, results))
     }

@@ -308,6 +308,7 @@ Began decomposing the monolithic 1,304-line `test-ui/src/services/solana.ts` int
 #### 1. Created Module Directory Structure
 
 **New Files:**
+
 ```
 test-ui/src/services/solana/
 ├── types.ts       # Type definitions for account states
@@ -319,8 +320,9 @@ test-ui/src/services/solana/
 #### 2. Extracted Type Definitions (`types.ts`)
 
 **Moved 4 account state types:**
+
 - `VaultAccountState`
-- `CasinoAccountState`  
+- `CasinoAccountState`
 - `AllowanceAccountState`
 - `AllowanceNonceRegistryState`
 
@@ -329,12 +331,14 @@ test-ui/src/services/solana/
 #### 3. Extracted Utility Functions (`utils.ts`)
 
 **Moved 14 utility functions:**
+
 - Parsing: `parseVaultAccount`, `parseCasinoAccount`, `parseAllowanceAccount`, `parseAllowanceNonceRegistryAccount`
 - Encoding: `i64ToLeBytes`, `u64ToLeBytes`, `anchorDiscriminator`, `buildIxData`
 - Rate Limiting: `withRateLimitRetry`, `isRateLimitError`, `sleep`
 - Misc: `createUniqueMemoInstruction`, `readPubkey`
 
-**Benefits:** 
+**Benefits:**
+
 - Testable in isolation
 - Clear separation of concerns
 - Rate limiting logic centralized
@@ -344,6 +348,7 @@ test-ui/src/services/solana/
 **New Class:** `PDADerivation`
 
 **Methods:**
+
 - `deriveCasinoPDA()` - Seeds: `["casino"]`
 - `deriveVaultPDA(user, casino?)` - Seeds: `["vault", casino, user]`
 - `deriveVaultAuthorityPDA(casino?)` - Seeds: `["vault-authority", casino]`
@@ -353,14 +358,16 @@ test-ui/src/services/solana/
 - `deriveAllowancePDA(user, nonce, casino?)` - Seeds: `["allowance", user, casino, nonce_le_bytes]`
 
 **Benefits:**
+
 - **Single Source of Truth:** All PDA derivations in one place with documented seed patterns
-- **Type Safety:** Uses PublicKey instead of string manipulations  
+- **Type Safety:** Uses PublicKey instead of string manipulations
 - **Easy to Verify:** Can compare with Rust backend PDA derivations
 - **Testable:** Can unit test each derivation independently
 
 #### 5. Updated Main Service (`solana.ts`)
 
 **Changes:**
+
 - Imports from new modules instead of duplicating code
 - `SolanaService` now uses `PDADerivation` class internally
 - Removed ~350 lines of duplicate utility/parsing code
@@ -369,6 +376,7 @@ test-ui/src/services/solana/
 #### 6. Fixed Build Errors
 
 **Files Updated:**
+
 - `BettingInterface.tsx` - Commented unused `allowanceRemaining` parameter
 - `VaultManager.tsx` - Commented unused `casinoVaultPda` variable
 
@@ -383,9 +391,11 @@ npm run build
 ### File Size Reduction
 
 **Before:**
+
 - `solana.ts`: 1,304 lines (monolithic)
 
 **After:**
+
 - `solana.ts`: ~950 lines (-354 lines, -27%)
 - `types.ts`: 48 lines
 - `utils.ts`: 281 lines
@@ -406,9 +416,10 @@ npm run build
 ### Remaining Work (Phase 2A Continued)
 
 Not included in this initial extraction:
+
 - Transaction builders (initialize*, deposit*, withdraw*, approve*)
 - Instruction encoding (could be further modularized)
-- Account fetching (get*Info methods)
+- Account fetching (get\*Info methods)
 - Wallet integration helpers
 
 These can be extracted in future iterations as needed.
@@ -434,3 +445,268 @@ npm run build
 ## Phase 2B: Unify PDA Derivation [SKIPPED]
 
 _Last Updated: 2026-01-18_
+**Status:** ⏭️ Skipped (user decision)  
+**Reason:** Low priority - PDA derivation working correctly, no issues detected
+
+---
+
+## Phase 3: Error Handling & Observability ✅ COMPLETE
+
+**Status:** ✅ Complete  
+**Date:** 2026-01-18  
+**Duration:** ~2 hours
+
+### Objectives
+
+1. Standardize error types across all services (backend, processor, smart contract)
+2. Implement structured logging with JSON formatting for production
+3. Add comprehensive observability with tracing spans for bet lifecycle
+4. Enhance Prometheus metrics with error tracking and processing times
+
+### Changes Made
+
+#### 1. Created Standardized Error System
+
+**File:** `services/shared/src/errors.rs` (New - 362 lines)
+
+**Key Components:**
+
+- `ErrorCategory` enum with 6 categories:
+  - `Validation` (400) - Invalid input from client
+  - `Network` (503) - External service unavailable
+  - `Contract` (400/500) - Smart contract execution failed
+  - `Internal` (500) - Unexpected internal errors
+  - `NotFound` (404) - Resource not found
+  - `Unauthorized` (401) - Auth/authz failed
+
+- `ErrorCode` constants with structured naming:
+  - Format: `<CATEGORY>_<SPECIFIC>_<DETAIL>`
+  - Examples: `VALIDATION_INVALID_BET_ID`, `NETWORK_RPC_UNAVAILABLE`, `CONTRACT_EXECUTION_FAILED`
+  - 23 error codes defined covering all failure scenarios
+
+- `ServiceError` struct with:
+  - Category-based classification
+  - Human-readable messages
+  - Optional context field for debugging
+  - Serializable to JSON for API responses
+  - Implements `std::error::Error` and `Display`
+
+**Convenience Constructors:**
+```rust
+ServiceError::invalid_bet_id("abc-123")
+ServiceError::insufficient_balance(1_000_000, 500_000)
+ServiceError::rpc_unavailable("https://api.mainnet-beta.solana.com")
+ServiceError::contract_execution_failed(signature, error)
+```
+
+**Tests:** 5 unit tests covering error creation, serialization, status codes
+
+#### 2. Updated Backend Error Handling
+
+**Files Modified:**
+- `services/backend/src/errors.rs` (65 lines → 109 lines)
+- `services/backend/src/handlers/bets.rs` (93 lines → 133 lines)
+- `services/backend/src/main.rs` (Updated logging initialization)
+- `services/backend/Cargo.toml` (Added tracing-subscriber JSON feature)
+
+**Changes:**
+
+- `AppError` now wraps `ServiceError` for standardized handling
+- All errors converted to `ServiceError` internally
+- `IntoResponse` implementation:
+  - Maps error categories to HTTP status codes
+  - Logs errors with structured fields based on severity
+  - Returns consistent JSON error format
+  - Increments `errors_total` metric by category and code
+
+**Structured Logging Example:**
+```rust
+tracing::error!(
+    error_code = %service_error.code,
+    error_category = ?service_error.category,
+    error_message = %service_error.message,
+    error_context = ?service_error.context,
+    "Request failed with error"
+);
+```
+
+**Error Response Format:**
+```json
+{
+  "error": {
+    "code": "VALIDATION_INVALID_BET_ID",
+    "message": "Invalid bet ID: abc-123",
+    "category": "Validation"
+  }
+}
+```
+
+#### 3. Added Structured Logging with Spans
+
+**Backend Handlers:**
+
+- `create_bet` - Span with stake_amount, choice, game_type
+  - Logs: bet creation start, bet_id assignment, Redis publish, completion
+  - Tracks full lifecycle of bet creation
+
+- `get_bet` - Span with bet_id
+  - Logs: retrieval, not found cases, bet status
+
+- `list_user_bets` - Span with user_wallet, limit, offset
+  - Logs: query parameters, result count
+
+**Processor Workers:**
+
+- `process_batch` - Span with worker_id, processor_id, batch_id
+  - Logs: fetch start, bet count, chunk processing, duration
+  - Nested `process_chunk` spans for individual transaction chunks
+
+- `execute_bets_on_solana` - Span with bet_count
+  - Logs: real vs simulated execution, RPC selection, transaction submission
+
+- `simulate_bets` - Span for each bet
+  - Logs: bet_id, choice, won, payout at trace level
+
+**JSON Logging Configuration:**
+
+```rust
+// Configurable via LOG_FORMAT environment variable
+let use_json = std::env::var("LOG_FORMAT")
+    .unwrap_or_else(|_| "text".to_string())
+    .eq_ignore_ascii_case("json");
+
+if use_json {
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(tracing_subscriber::fmt::layer().json())
+        .init();
+}
+```
+
+#### 4. Enhanced Metrics
+
+**Existing Metrics (Retained):**
+- `bets_created_total` - Counter for total bets created
+- `pending_bets_fetched` - Gauge for bets claimed per batch
+- `batch_processing_duration_seconds` - Histogram for batch processing time
+- `worker_circuit_breaker_open_total` - Counter for circuit breaker activations
+- `worker_errors_total` - Counter for worker errors
+
+**New Metrics:**
+- `errors_total{category, code}` - Counter for errors by category and code
+- `batches_processed_total` - Counter for successfully processed batches
+- `batch_chunk_failures_total` - Counter for failed transaction chunks
+
+**Metrics Endpoints:**
+- Backend: `http://localhost:3001/metrics` (Prometheus format)
+- Processor: `http://localhost:9091/metrics` (Prometheus format)
+
+#### 5. Documentation
+
+**File:** `ERROR_CODES.md` (New - 421 lines)
+
+**Contents:**
+- Complete reference for all 23 error codes
+- Category mapping to HTTP status and log levels
+- Context and usage examples for each error
+- JSON response format examples
+- Structured logging format documentation
+- Metrics documentation
+- Guidelines for adding new error codes
+
+### Testing
+
+```bash
+# Build shared crate with new error types
+cd services/shared && cargo build
+# Result: Success (6 tests passing)
+
+# Build backend with updated error handling
+cd services/backend && cargo build
+# Result: Success (9 warnings, 0 errors)
+
+# Build processor with structured logging
+cd services/processor && cargo build
+# Result: Success (14 warnings, 0 errors)
+```
+
+### Configuration
+
+**Environment Variables:**
+
+- `LOG_FORMAT=json` - Enable JSON structured logging (default: "text")
+- `RUST_LOG=<level>` - Set log level (default: "info")
+  - Examples: `backend=debug`, `processor=trace,worker_pool=debug`
+
+**Production Configuration:**
+```bash
+export LOG_FORMAT=json
+export RUST_LOG=backend=info,processor=info
+```
+
+**Development Configuration:**
+```bash
+export LOG_FORMAT=text
+export RUST_LOG=backend=debug,processor=debug
+```
+
+### Observability Improvements
+
+1. **Error Tracking:**
+   - All errors have structured codes for programmatic handling
+   - Error metrics enable alerting on error rate spikes
+   - Context fields provide debugging information
+
+2. **Performance Monitoring:**
+   - Batch processing duration tracked with histograms
+   - Span duration automatically recorded by tracing
+   - Can identify slow operations
+
+3. **Debugging:**
+   - JSON logs can be ingested by log aggregators (Datadog, ELK, etc.)
+   - Structured fields enable efficient querying
+   - Span IDs link related log entries
+
+4. **Production Readiness:**
+   - Consistent error responses improve API usability
+   - Proper HTTP status codes
+   - No sensitive information in error responses (context only in logs)
+
+### Rollback Plan
+
+```bash
+# Revert shared crate
+git checkout services/shared/src/errors.rs services/shared/src/lib.rs
+
+# Revert backend
+git checkout services/backend/src/errors.rs
+git checkout services/backend/src/handlers/bets.rs
+git checkout services/backend/src/main.rs
+git checkout services/backend/Cargo.toml
+
+# Revert processor
+git checkout services/processor/src/worker_pool.rs
+git checkout services/processor/src/main.rs
+git checkout services/processor/Cargo.toml
+
+# Remove documentation
+rm ERROR_CODES.md
+
+# Rebuild
+cargo build
+```
+
+### Next Steps
+
+- **Phase 4:** Testing (Integration tests, RPC failover tests, error scenario tests)
+- **Phase 5:** Architecture Improvements (Connection pooling, graceful shutdown, health checks)
+- **Phase 6:** Production Hardening (Rate limiting, DDoS protection, monitoring)
+
+### Known Limitations
+
+1. **Smart Contract Errors:** Not migrated to use shared error types (would require Anchor program changes)
+2. **Frontend Errors:** Not standardized yet (handled separately in TypeScript)
+3. **Database Errors:** PostgreSQL errors wrapped generically (could be more specific)
+4. **Metrics Persistence:** Metrics reset on service restart (consider Prometheus push gateway)
+
+---

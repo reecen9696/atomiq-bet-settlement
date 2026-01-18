@@ -23,14 +23,34 @@ use state::AppState;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize tracing
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "backend=info,tower_http=info".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    // Initialize structured logging with JSON formatting (configurable via env)
+    let use_json = std::env::var("LOG_FORMAT")
+        .unwrap_or_else(|_| "text".to_string())
+        .eq_ignore_ascii_case("json");
+
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "backend=info,tower_http=info".into());
+
+    if use_json {
+        // JSON structured logging for production
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(tracing_subscriber::fmt::layer().json())
+            .init();
+    } else {
+        // Human-readable logging for development
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(tracing_subscriber::fmt::layer())
+            .init();
+    }
+
+    tracing::info!(
+        service = "backend",
+        version = env!("CARGO_PKG_VERSION"),
+        log_format = if use_json { "json" } else { "text" },
+        "Starting backend service"
+    );
 
     // Load configuration
     let config = Config::load()?;
