@@ -1,5 +1,7 @@
 pub mod initialize_vault;
 pub mod initialize_casino_vault;
+pub mod initialize_vault_only;
+pub mod reconcile_casino_vault;
 pub mod deposit_sol;
 pub mod deposit_spl;
 pub mod approve_allowance;
@@ -14,6 +16,8 @@ pub mod withdraw_casino_funds;
 
 pub use initialize_vault::*;
 pub use initialize_casino_vault::*;
+pub use initialize_vault_only::*;
+pub use reconcile_casino_vault::*;
 pub use deposit_sol::*;
 pub use deposit_spl::*;
 pub use approve_allowance::*;

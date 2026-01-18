@@ -12,14 +12,13 @@ pub struct WithdrawCasinoFunds<'info> {
     )]
     pub casino: Account<'info, Casino>,
 
-    /// Casino vault authority (holds the funds)
+    /// Casino vault - program-owned account holding casino funds
     #[account(
         mut,
-        seeds = [b"vault-authority", casino.key().as_ref()],
-        bump = casino.vault_authority_bump
+        seeds = [b"casino-vault", casino.key().as_ref()],
+        bump = casino_vault.bump
     )]
-    /// CHECK: This is a PDA owned by the program
-    pub vault_authority: UncheckedAccount<'info>,
+    pub casino_vault: Account<'info, CasinoVault>,
 
     /// Casino authority (must sign)
     #[account(mut)]
@@ -29,9 +28,22 @@ pub struct WithdrawCasinoFunds<'info> {
 }
 
 pub fn handler(ctx: Context<WithdrawCasinoFunds>, amount: u64) -> Result<()> {
-    // Direct lamports manipulation - vault authority is owned by our program
-    **ctx.accounts.vault_authority.to_account_info().try_borrow_mut_lamports()? -= amount;
+    let casino_vault = &mut ctx.accounts.casino_vault;
+    let clock = Clock::get()?;
+
+    // Balance check with reconciliation
+    require!(
+        casino_vault.sol_balance >= amount,
+        VaultError::InsufficientBalance
+    );
+
+    // Direct lamports manipulation - casino vault is program-owned
+    **casino_vault.to_account_info().try_borrow_mut_lamports()? -= amount;
     **ctx.accounts.authority.to_account_info().try_borrow_mut_lamports()? += amount;
+
+    // Update tracked balance
+    casino_vault.sol_balance = casino_vault.sol_balance.saturating_sub(amount);
+    casino_vault.last_activity = clock.unix_timestamp;
 
     msg!("Withdrew {} lamports from casino vault", amount);
 

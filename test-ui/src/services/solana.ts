@@ -682,6 +682,15 @@ export class SolanaService {
     return vaultAuthority.toBase58();
   }
 
+  async deriveCasinoVaultPDA(): Promise<string> {
+    const casino = new PublicKey(await this.deriveCasinoPDA());
+    const [casinoVault] = PublicKey.findProgramAddressSync(
+      [Buffer.from("casino-vault"), casino.toBuffer()],
+      this.programId,
+    );
+    return casinoVault.toBase58();
+  }
+
   async deriveRateLimiterPDA(userPublicKey: string): Promise<string> {
     const user = new PublicKey(userPublicKey);
     const [rateLimiter] = PublicKey.findProgramAddressSync(
@@ -851,9 +860,11 @@ export class SolanaService {
     signature: string;
     casinoPda: string;
     vaultAuthorityPda: string;
+    casinoVaultPda: string;
   }> {
     const connection = params.connection ?? this.connection;
     const casinoPda = await this.deriveCasinoPDA();
+    const casinoVaultPda = await this.deriveCasinoVaultPDA();
     const vaultAuthorityPda = await this.deriveVaultAuthorityPDA();
 
     const data = await buildIxData("initialize_casino_vault", [
@@ -864,6 +875,11 @@ export class SolanaService {
       programId: this.programId,
       keys: [
         { pubkey: new PublicKey(casinoPda), isSigner: false, isWritable: true },
+        {
+          pubkey: new PublicKey(casinoVaultPda),
+          isSigner: false,
+          isWritable: true,
+        },
         {
           pubkey: new PublicKey(vaultAuthorityPda),
           isSigner: false,
@@ -883,7 +899,93 @@ export class SolanaService {
     const signature = params.signTransaction
       ? await signSendAndConfirm(connection, params.signTransaction, tx)
       : await sendAndConfirm(connection, params.sendTransaction, tx);
-    return { signature, casinoPda, vaultAuthorityPda };
+    return { signature, casinoPda, vaultAuthorityPda, casinoVaultPda };
+  }
+
+  async initializeVaultOnly(params: {
+    authority: PublicKey;
+    sendTransaction: SendTransactionFn;
+    signTransaction?: SignTransactionFn;
+    connection?: Connection;
+  }): Promise<{
+    signature: string;
+    casinoVaultPda: string;
+  }> {
+    const connection = params.connection ?? this.connection;
+    const casinoPda = await this.deriveCasinoPDA();
+    const casinoVaultPda = await this.deriveCasinoVaultPDA();
+
+    const data = await buildIxData("initialize_vault_only", []);
+
+    const ix = new TransactionInstruction({
+      programId: this.programId,
+      keys: [
+        {
+          pubkey: new PublicKey(casinoPda),
+          isSigner: false,
+          isWritable: false,
+        },
+        {
+          pubkey: new PublicKey(casinoVaultPda),
+          isSigner: false,
+          isWritable: true,
+        },
+        { pubkey: params.authority, isSigner: true, isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      ],
+      data,
+    });
+
+    // Add unique memo to prevent transaction deduplication errors
+    const memoIx = createUniqueMemoInstruction();
+    const tx = new Transaction().add(memoIx).add(ix);
+    tx.feePayer = params.authority;
+
+    const signature = params.signTransaction
+      ? await signSendAndConfirm(connection, params.signTransaction, tx)
+      : await sendAndConfirm(connection, params.sendTransaction, tx);
+    return { signature, casinoVaultPda };
+  }
+
+  async reconcileCasinoVault(params: {
+    authority: PublicKey;
+    sendTransaction: SendTransactionFn;
+    signTransaction?: SignTransactionFn;
+    connection?: Connection;
+  }): Promise<{ signature: string }> {
+    const connection = params.connection ?? this.connection;
+    const casinoPda = await this.deriveCasinoPDA();
+    const casinoVaultPda = await this.deriveCasinoVaultPDA();
+
+    const data = await buildIxData("reconcile_casino_vault", []);
+
+    const ix = new TransactionInstruction({
+      programId: this.programId,
+      keys: [
+        {
+          pubkey: new PublicKey(casinoPda),
+          isSigner: false,
+          isWritable: false,
+        },
+        {
+          pubkey: new PublicKey(casinoVaultPda),
+          isSigner: false,
+          isWritable: true,
+        },
+        { pubkey: params.authority, isSigner: true, isWritable: false },
+      ],
+      data,
+    });
+
+    // Add unique memo to prevent transaction deduplication errors
+    const memoIx = createUniqueMemoInstruction();
+    const tx = new Transaction().add(memoIx).add(ix);
+    tx.feePayer = params.authority;
+
+    const signature = params.signTransaction
+      ? await signSendAndConfirm(connection, params.signTransaction, tx)
+      : await sendAndConfirm(connection, params.sendTransaction, tx);
+    return { signature };
   }
 
   async initializeUserVault(params: {

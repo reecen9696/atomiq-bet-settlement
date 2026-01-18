@@ -37,7 +37,7 @@ export function VaultManager() {
   const [depositSol, setDepositSol] = useState("0.1");
   const [withdrawSol, setWithdrawSol] = useState("0.1");
   const [allowanceSol, setAllowanceSol] = useState("5");
-  const [allowanceDuration, setAllowanceDuration] = useState("100000");
+  const [allowanceDuration, setAllowanceDuration] = useState("10000");
   const [lastAllowancePda, setLastAllowancePda] = useState<string>("");
   const [revokeAllowancePda, setRevokeAllowancePda] = useState<string>("");
 
@@ -258,6 +258,113 @@ export function VaultManager() {
     }
   };
 
+  const handleInitializeCasinoVaultOnly = async () => {
+    if (!publicKey) return;
+    setIsCreating(true);
+    setErrorMsg("");
+    setErrorDetails("");
+    setStatusMsg("Initializing casino vault...");
+
+    try {
+      const { signature, casinoVaultPda } =
+        await solanaService.initializeVaultOnly({
+          authority: publicKey,
+          sendTransaction,
+          signTransaction: signTransaction ?? undefined,
+          connection,
+        });
+      setLastSignature(signature);
+      await refreshVaultInfo();
+      setStatusMsg("Casino vault initialized successfully");
+    } catch (err) {
+      console.error("Failed to initialize casino vault:", err);
+
+      // Check if vault was actually created despite the error
+      try {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (
+          errMsg.includes("already been processed") ||
+          errMsg.includes("This transaction has already been processed")
+        ) {
+          console.log("Checking if casino vault actually succeeded...");
+          await refreshVaultInfo();
+          setStatusMsg("Casino vault initialized (recovered from error)");
+          setErrorMsg("");
+          setErrorDetails("");
+          return;
+        }
+      } catch (checkErr) {
+        console.error("Error checking casino vault:", checkErr);
+      }
+
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Failed to initialize casino vault";
+      setErrorMsg(msg);
+      setErrorDetails(
+        typeof err === "object" && err !== null
+          ? JSON.stringify(err, Object.getOwnPropertyNames(err), 2)
+          : String(err),
+      );
+      setStatusMsg("");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleReconcileCasinoVault = async () => {
+    if (!publicKey) return;
+    setIsCreating(true);
+    setErrorMsg("");
+    setErrorDetails("");
+    setStatusMsg("Reconciling casino vault balance...");
+
+    try {
+      const { signature } = await solanaService.reconcileCasinoVault({
+        authority: publicKey,
+        sendTransaction,
+        signTransaction: signTransaction ?? undefined,
+        connection,
+      });
+      setLastSignature(signature);
+      await refreshVaultInfo();
+      setStatusMsg("Casino vault balance reconciled successfully");
+    } catch (err) {
+      console.error("Failed to reconcile casino vault:", err);
+
+      // Check if reconciliation actually succeeded despite the error
+      try {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (
+          errMsg.includes("already been processed") ||
+          errMsg.includes("This transaction has already been processed")
+        ) {
+          console.log("Checking if reconciliation actually succeeded...");
+          await refreshVaultInfo();
+          setStatusMsg("Casino vault reconciled (recovered from error)");
+          setErrorMsg("");
+          setErrorDetails("");
+          return;
+        }
+      } catch (checkErr) {
+        console.error("Error checking reconciliation:", checkErr);
+      }
+
+      const msg =
+        err instanceof Error ? err.message : "Failed to reconcile casino vault";
+      setErrorMsg(msg);
+      setErrorDetails(
+        typeof err === "object" && err !== null
+          ? JSON.stringify(err, Object.getOwnPropertyNames(err), 2)
+          : String(err),
+      );
+      setStatusMsg("");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   const handleInitializeVault = async () => {
     if (!publicKey) return;
     setIsCreating(true);
@@ -279,6 +386,31 @@ export function VaultManager() {
       setStatusMsg("Vault initialized");
     } catch (err) {
       console.error("Failed to initialize vault:", err);
+
+      // Check if vault was actually created despite the error
+      // This handles "already been processed" errors where the tx succeeded
+      try {
+        const vaultPda = await solanaService.deriveVaultPDA(
+          publicKey.toBase58(),
+        );
+        const exists = await solanaService.getAccountExists(
+          vaultPda,
+          connection,
+        );
+        if (exists) {
+          // Vault was actually created successfully!
+          setVaultAddress(vaultPda);
+          setVaultExists(true);
+          await refreshVaultInfo();
+          setStatusMsg("Vault initialized (recovered from error)");
+          setErrorMsg("");
+          setErrorDetails("");
+          return;
+        }
+      } catch (checkErr) {
+        console.error("Error checking vault existence:", checkErr);
+      }
+
       const msg =
         err instanceof Error ? err.message : "Failed to initialize vault";
       setErrorMsg(msg);
@@ -316,6 +448,25 @@ export function VaultManager() {
       setStatusMsg("Deposit confirmed");
     } catch (err) {
       console.error("Deposit failed:", err);
+
+      // Check if deposit actually succeeded despite error (e.g., "transaction already processed")
+      try {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (
+          errMsg.includes("already been processed") ||
+          errMsg.includes("This transaction has already been processed")
+        ) {
+          console.log("Checking if deposit actually succeeded...");
+          await refreshVaultInfo();
+          setStatusMsg("Deposit confirmed (recovered from error)");
+          setErrorMsg("");
+          setErrorDetails("");
+          return;
+        }
+      } catch (checkErr) {
+        console.error("Error checking deposit success:", checkErr);
+      }
+
       const msg = err instanceof Error ? err.message : "Deposit failed";
       setErrorMsg(msg);
       setErrorDetails(
@@ -352,6 +503,25 @@ export function VaultManager() {
       setStatusMsg("Withdraw confirmed");
     } catch (err) {
       console.error("Withdraw failed:", err);
+
+      // Check if withdrawal actually succeeded despite error (e.g., "transaction already processed")
+      try {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (
+          errMsg.includes("already been processed") ||
+          errMsg.includes("This transaction has already been processed")
+        ) {
+          console.log("Checking if withdrawal actually succeeded...");
+          await refreshVaultInfo();
+          setStatusMsg("Withdrawal confirmed (recovered from error)");
+          setErrorMsg("");
+          setErrorDetails("");
+          return;
+        }
+      } catch (checkErr) {
+        console.error("Error checking withdrawal success:", checkErr);
+      }
+
       const msg = err instanceof Error ? err.message : "Withdraw failed";
       setErrorMsg(msg);
       setErrorDetails(
@@ -662,6 +832,54 @@ export function VaultManager() {
               "Initialize Casino (Admin)"
             )}
           </button>
+
+          <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+            <p className="text-sm font-semibold text-yellow-900 mb-2">
+              ⚠️ Casino Vault Missing?
+            </p>
+            <p className="text-xs text-yellow-800 mb-3">
+              If casino exists but bets fail with "AccountNotInitialized",
+              initialize the casino vault separately:
+            </p>
+            <button
+              onClick={handleInitializeCasinoVaultOnly}
+              disabled={isCreating || casinoExists !== true}
+              className="w-full bg-gradient-to-r from-yellow-500 to-orange-600 text-white px-4 py-2 rounded-lg hover:from-yellow-600 hover:to-orange-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all duration-200 font-semibold text-sm shadow-md hover:shadow-lg flex items-center justify-center"
+            >
+              {isCreating ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Working...
+                </>
+              ) : (
+                "Initialize Casino Vault Only"
+              )}
+            </button>
+          </div>
+
+          <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <p className="text-sm font-semibold text-blue-900 mb-2">
+              💰 Reconcile Vault Balance (Admin)
+            </p>
+            <p className="text-xs text-blue-800 mb-3">
+              After depositing SOL directly to the casino vault, sync the
+              tracked balance:
+            </p>
+            <button
+              onClick={handleReconcileCasinoVault}
+              disabled={isCreating || casinoExists !== true}
+              className="w-full bg-gradient-to-r from-blue-500 to-cyan-600 text-white px-4 py-2 rounded-lg hover:from-blue-600 hover:to-cyan-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all duration-200 font-semibold text-sm shadow-md hover:shadow-lg flex items-center justify-center"
+            >
+              {isCreating ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Working...
+                </>
+              ) : (
+                "Reconcile Casino Vault Balance"
+              )}
+            </button>
+          </div>
         </div>
 
         <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-200">

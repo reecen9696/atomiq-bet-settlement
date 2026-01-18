@@ -7,14 +7,20 @@ import {
   TrendingUp,
   TrendingDown,
   ExternalLink,
+  AlertCircle,
 } from "lucide-react";
 import { solanaService } from "../services/solana";
 import type { Bet } from "../types";
 
-export function BettingInterface() {
+interface BettingInterfaceProps {
+  allowanceExists?: boolean | null;
+  allowanceRemaining?: bigint | null;
+}
+
+export function BettingInterface({ allowanceExists, allowanceRemaining }: BettingInterfaceProps) {
   const { publicKey } = useWallet();
   const { createBet, isLoading } = useApi();
-  const [amount, setAmount] = useState("0.1");
+  const [amount, setAmount] = useState("0.01");
   const [choice, setChoice] = useState<"heads" | "tails">("heads");
   const [lastBet, setLastBet] = useState<Bet | null>(null);
   const [error, setError] = useState<string>("");
@@ -148,10 +154,20 @@ export function BettingInterface() {
           </div>
         )}
 
+        {/* Allowance Warning */}
+        {allowanceExists === false && (
+          <div className="p-3 bg-yellow-50 border border-yellow-300 rounded-lg flex items-start">
+            <AlertCircle className="w-5 h-5 text-yellow-600 mr-2 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-yellow-800">
+              <strong>No active allowance.</strong> Please approve an allowance in Vault Management before placing bets.
+            </div>
+          </div>
+        )}
+
         {/* Place Bet Button */}
         <button
           onClick={handlePlaceBet}
-          disabled={isLoading}
+          disabled={isLoading || allowanceExists !== true}
           className="w-full bg-gradient-to-r from-orange-500 to-red-600 text-white px-6 py-4 rounded-lg hover:from-orange-600 hover:to-red-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all duration-200 font-bold text-lg shadow-lg hover:shadow-xl flex items-center justify-center"
         >
           {isLoading ? (
@@ -159,6 +175,8 @@ export function BettingInterface() {
               <Loader2 className="w-6 h-6 animate-spin mr-2" />
               Placing Bet...
             </>
+          ) : allowanceExists !== true ? (
+            "Approve Allowance First"
           ) : (
             `Place ${amount} SOL Bet`
           )}
