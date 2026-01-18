@@ -37,7 +37,7 @@ export function VaultManager() {
   const [depositSol, setDepositSol] = useState("0.1");
   const [withdrawSol, setWithdrawSol] = useState("0.1");
   const [allowanceSol, setAllowanceSol] = useState("5");
-  const [allowanceDuration, setAllowanceDuration] = useState("100000");
+  const [allowanceDuration, setAllowanceDuration] = useState("10000");
   const [lastAllowancePda, setLastAllowancePda] = useState<string>("");
   const [revokeAllowancePda, setRevokeAllowancePda] = useState<string>("");
 

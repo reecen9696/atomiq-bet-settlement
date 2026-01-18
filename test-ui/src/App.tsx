@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
+import { useMemo, useState, useEffect } from 'react';
+import { ConnectionProvider, WalletProvider, useWallet } from '@solana/wallet-adapter-react';
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import {
@@ -12,38 +12,58 @@ import { WalletConnect } from './components/WalletConnect';
 import { VaultManager } from './components/VaultManager';
 import { BettingInterface } from './components/BettingInterface';
 import { TransactionLog } from './components/TransactionLog';
+import { solanaService } from './services/solana';
+import { useConnection } from '@solana/wallet-adapter-react';
 
 import '@solana/wallet-adapter-react-ui/styles.css';
 
-function App() {
+function AppContent() {
+  const { publicKey } = useWallet();
+  const { connection } = useConnection();
+  const [allowanceExists, setAllowanceExists] = useState<boolean | null>(null);
+  const [allowanceRemaining, setAllowanceRemaining] = useState<bigint | null>(null);
   const envNetwork = (import.meta.env.VITE_SOLANA_NETWORK || 'devnet') as string;
-  const network =
-    envNetwork === 'mainnet-beta'
-      ? WalletAdapterNetwork.Mainnet
-      : envNetwork === 'testnet'
-      ? WalletAdapterNetwork.Testnet
-      : WalletAdapterNetwork.Devnet;
-  const endpoint = useMemo(
-    () => (import.meta.env.VITE_SOLANA_RPC_URL as string) || clusterApiUrl(network),
-    [network]
-  );
 
-  const wallets = useMemo(
-    () => [
-      new PhantomWalletAdapter(),
-      new SolflareWalletAdapter({ network }),
-      new TorusWalletAdapter(),
-    ],
-    [network]
-  );
+  // Check allowance state when wallet changes
+  useEffect(() => {
+    if (!publicKey) {
+      setAllowanceExists(null);
+      setAllowanceRemaining(null);
+      return;
+    }
+
+    const checkAllowance = async () => {
+      try {
+        const key = `atomik:lastAllowancePda:${publicKey.toBase58()}`;
+        const savedPda = localStorage.getItem(key);
+        
+        if (!savedPda || savedPda.length < 20) {
+          setAllowanceExists(false);
+          setAllowanceRemaining(null);
+          return;
+        }
+
+        const info = await solanaService.getAllowanceInfoByAddress(savedPda, connection);
+        setAllowanceExists(info.exists && !info.state?.revoked);
+        setAllowanceRemaining(info.state?.remainingLamports || null);
+      } catch (err) {
+        console.error('Error checking allowance:', err);
+        setAllowanceExists(null);
+        setAllowanceRemaining(null);
+      }
+    };
+
+    checkAllowance();
+    
+    // Poll for updates every 5 seconds
+    const interval = setInterval(checkAllowance, 5000);
+    return () => clearInterval(interval);
+  }, [publicKey, connection]);
 
   return (
-    <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
-        <WalletModalProvider>
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
-        {/* Header */}
-        <header className="bg-white shadow-md border-b-4 border-orange-500">
+    <>
+      {/* Header */}
+      <header className="bg-white shadow-md border-b-4 border-orange-500">
           <div className="max-w-7xl mx-auto px-4 py-6">
             <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-purple-600">
               🎲 Atomik Bet Test UI
@@ -61,7 +81,7 @@ function App() {
             <div className="space-y-6">
               <WalletConnect />
               <VaultManager />
-              <BettingInterface />
+              <BettingInterface allowanceExists={allowanceExists} allowanceRemaining={allowanceRemaining} />
             </div>
 
             {/* Right Column */}
@@ -111,7 +131,37 @@ function App() {
         <footer className="mt-12 py-6 text-center text-gray-500 text-sm">
           <p>Atomik Wallet Test Interface • Powered by Solana</p>
         </footer>
-      </div>
+    </>
+  );
+}
+
+function App() {
+  const envNetwork = (import.meta.env.VITE_SOLANA_NETWORK || 'devnet') as string;
+  const network =
+    envNetwork === 'mainnet-beta'
+      ? WalletAdapterNetwork.Mainnet
+      : envNetwork === 'testnet'
+      ? WalletAdapterNetwork.Testnet
+      : WalletAdapterNetwork.Devnet;
+  const endpoint = useMemo(
+    () => (import.meta.env.VITE_SOLANA_RPC_URL as string) || clusterApiUrl(network),
+    [network]
+  );
+
+  const wallets = useMemo(
+    () => [
+      new PhantomWalletAdapter(),
+      new SolflareWalletAdapter({ network }),
+      new TorusWalletAdapter(),
+    ],
+    [network]
+  );
+
+  return (
+    <ConnectionProvider endpoint={endpoint}>
+      <WalletProvider wallets={wallets} autoConnect>
+        <WalletModalProvider>
+          <AppContent />
         </WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>
