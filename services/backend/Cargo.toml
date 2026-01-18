@@ -53,3 +53,9 @@ metrics-exporter-prometheus = "0.13"
 
 [dev-dependencies]
 axum-test = "14"
+reqwest = { version = "0.11", features = ["json"] }
+tokio-test = "0.4"
+
+[lib]
+name = "backend"
+path = "src/lib.rs"
