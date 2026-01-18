@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "services/shared",
     "services/backend",
     "services/processor",
 ]

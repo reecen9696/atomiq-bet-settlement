@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# Shared types and constants
+shared = { path = "../shared" }
+
 # Async runtime
 tokio = { workspace = true }
 async-trait = "0.1"

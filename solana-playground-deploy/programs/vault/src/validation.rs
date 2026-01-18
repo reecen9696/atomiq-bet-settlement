@@ -56,7 +56,7 @@ pub fn validate_allowance_params(amount: u64, duration_seconds: i64) -> Result<(
 /// Validate bet ID format
 pub fn validate_bet_id(bet_id: &str) -> Result<()> {
     require!(
-        !bet_id.is_empty() && bet_id.len() <= crate::state::ProcessedBet::MAX_BET_ID_LEN,
+        !bet_id.is_empty() && bet_id.len() <= crate::state::MAX_BET_ID_LENGTH,
         VaultError::InvalidBetId
     );
     Ok(())

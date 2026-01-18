@@ -1,114 +1,141 @@
-# Atomik Wallet - Solana Vault POC
+# Atomik Wallet - Solana Betting System
 
-Non-custodial Solana wallet system with vault-based allowances and batched bet settlement.
+Non-custodial Solana betting platform with vault-based allowances and batched transaction processing.
 
 ## Architecture
 
 ```
 atomik-wallet/
-├── programs/           # Solana programs (Anchor)
-│   └── vault/         # Vault program with allowance system
-├── services/          # Backend services (Rust)
-│   ├── backend/       # API server (Axum)
-│   └── processor/     # External processor for batch settlement
-├── apps/              # Frontend applications
-│   └── frontend/      # React + Next.js + Privy
-└── packages/          # Shared packages
-    ├── types/         # TypeScript types
-    └── domain/        # Domain models
+├── solana-playground-deploy/  # Solana program (Anchor)
+│   └── programs/vault/        # Vault program with allowances
+├── services/                  # Backend services (Rust)
+│   ├── backend/              # REST API (Actix-web)
+│   └── processor/            # Batch processor
+├── test-ui/                  # Test interface (React + Vite)
+├── scripts/                  # Deployment & testing scripts
+├── docs/                     # Documentation
+└── keys/                     # Private keys (gitignored)
 ```
 
-## Features
+## Technical Stack
 
-- ✅ Non-custodial vault system with PDA-based accounts
-- ✅ One-time allowance approval (no per-bet signing)
-- ✅ Batched settlement with parallel processing
-- ✅ Comprehensive error handling and reconciliation
-- ✅ High-security design against common Solana vulnerabilities
-- ✅ Production-ready architecture with DDD principles
+**Blockchain:** Solana Devnet  
+**Smart Contract:** Anchor 0.30.1  
+**Backend:** Rust (Actix-web, Tokio)  
+**Processor:** Rust (Tokio, multi-threaded workers)  
+**Storage:** Redis (in-memory bet queue)  
+**Frontend:** React 18 + Vite + Solana wallet adapters
 
-## Getting Started
+## Key Features
+
+- **Program-owned Casino Vault** - Direct lamports manipulation (~100 CU vs ~5,000 CU via CPI)
+- **Allowance System** - One-time approval for multiple bets (no per-bet signing)
+- **Batched Settlement** - Parallel processing with worker pool
+- **Race Condition Prevention** - Frontend validates allowance before bet submission
+- **Transaction Deduplication** - Unique memo instructions prevent duplicate processing
+- **Balance Reconciliation** - Admin tool to sync tracked vs actual balances
+
+## Quick Start
 
 ### Prerequisites
 
-- Node.js >= 18
-- pnpm >= 8
-- Rust >= 1.75
-- Anchor >= 0.29
-- Solana CLI >= 1.17
-- PostgreSQL >= 15
-- Redis >= 7
+- Node.js 18+
+- pnpm 8+
+- Rust 1.75+
+- Solana CLI 1.17+
+- Redis 7+
 
-### Installation
+### Setup
 
 ```bash
 # Install dependencies
 pnpm install
 
-# Build all projects
-pnpm build
-
-# Set up environment
+# Copy environment variables
 cp .env.example .env
-# Edit .env with your configuration
+# Edit .env with:
+# - VITE_VAULT_PROGRAM_ID=5sKSxXZ79DUJpnA8MVVmKsikKrQ4oG7TpNMJCjVzFnLf
+# - VITE_SOLANA_NETWORK=devnet
 
-# Run database migrations
-pnpm db:migrate
+# Start Redis
+redis-server
+
+# Start backend (terminal 1)
+cd services/backend && cargo run --release
+
+# Start processor (terminal 2)
+cd services/processor && cargo run --release
+
+# Start test UI (terminal 3)
+cd test-ui && pnpm dev
 ```
 
-### Development
+### Deploy to Solana Playground
 
-```bash
-# Start all services in dev mode
-pnpm dev
+1. Open [Solana Playground](https://beta.solpg.io)
+2. Import files from `solana-playground-deploy/programs/vault/`
+3. Run `build` and `deploy`
+4. Update `.env` files with new program ID
 
-# Or start individually:
-pnpm anchor:build        # Build Solana program
-pnpm backend:dev         # Start API server
-pnpm processor:dev       # Start batch processor
-pnpm frontend:dev        # Start frontend
+## Core Concepts
+
+### Casino Vault (Program-Owned)
+
+```rust
+// seeds: [b"casino-vault", casino.key()]
+pub struct CasinoVault {
+    pub casino: Pubkey,
+    pub sol_balance: u64,  // Tracked balance
+    pub bump: u8,
+}
 ```
 
-### Testing
+Direct lamports manipulation:
 
-```bash
-# Run all tests
-pnpm test
-
-# Test Anchor program
-pnpm anchor:test
-
-# Run integration tests
-cd services/backend && cargo test
+```rust
+**casino_vault.to_account_info().try_borrow_mut_lamports()? -= amount;
 ```
 
-### Deployment
+### Allowance Flow
 
-```bash
-# Deploy to Solana testnet
-pnpm anchor:deploy:testnet
+1. User approves allowance (e.g., 5 SOL for 10,000 seconds)
+2. Frontend validates allowance exists on-chain
+3. User places bets without signing each one
+4. Processor spends from allowance via `spend_from_allowance` instruction
 
-# Build production
-pnpm build
+### Bet Processing Pipeline
+
+```
+User → Backend API → Redis Queue → Processor Workers → Solana → Payout
+       (creates bet)  (batching)   (parallel exec)   (confirm)  (winner)
 ```
 
 ## Security
 
-This system handles real money. Security considerations:
+- All privileged operations require casino authority signature
+- Allowance constraints: max duration (24h), max amount (10,000 SOL)
+- Rate limiting on allowance approvals (100/hour)
+- Bet deduplication via `ProcessedBet` accounts
+- Account mutability validation (even for placeholders)
 
-- ✅ All arithmetic uses checked operations
-- ✅ Signer validation on all privileged operations
-- ✅ PDA canonical bump storage
-- ✅ SPL token account validation
-- ✅ Allowance rate limiting and expiry enforcement
-- ✅ Idempotency keys on all financial operations
-- ✅ Immutable audit log
-- ✅ Circuit breakers on RPC calls
-- ✅ Transaction verification before signing
+## Scripts
 
-See [SECURITY.md](SECURITY.md) for full security documentation.
+See `scripts/` directory:
+
+- `start-services.sh` - Start backend + processor
+- `stop-services.sh` - Stop all services
+- `initialize-casino-vault.js` - Initialize casino (one-time)
+- `fund-casino-vault.js` - Fund casino vault
+- `test-real-bet.sh` - End-to-end bet test
+
+## Documentation
+
+See `docs/` directory for detailed documentation:
+
+- `CASINO_VAULT_IMPLEMENTATION.md` - Architecture details
+- `DEPLOYMENT_2026-01-17.md` - Latest deployment notes
+- `SOLANA_PLAYGROUND_GUIDE.md` - Deployment guide
 
 ## License
 
 MIT
-# atomiq-bet-settlement

@@ -97,7 +97,14 @@ pub fn handler(
     // Validate bet amount
     validate_bet_amount(amount)?;
 
-    // Validate bet ID
+    // Validate bet ID length BEFORE PDA derivation (critical: prevents seed overflow)
+    // This must happen before the ProcessedBet account is initialized in the Context
+    require!(
+        bet_id.len() <= MAX_BET_ID_LENGTH,
+        VaultError::InvalidBetId
+    );
+
+    // Validate bet ID format
     validate_bet_id(&bet_id)?;
 
     // Check allowance is valid

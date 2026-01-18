@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# Shared types and constants
+shared = { path = "../shared" }
+
 # Web framework
 axum = "0.7"
 tokio = { workspace = true }

@@ -1,5 +1,4 @@
 use anchor_lang::prelude::*;
-use anchor_lang::system_program;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 use crate::state::*;
 use crate::errors::*;
@@ -79,10 +78,19 @@ pub fn handler(
         // SOL payout: casino_vault -> user vault
         // Direct lamports manipulation - works because both accounts are program-owned
         let casino_vault = &mut ctx.accounts.casino_vault;
+        let rent = Rent::get()?;
         
         // Balance check with reconciliation
         require!(
             casino_vault.sol_balance >= amount,
+            VaultError::InsufficientBalance
+        );
+        
+        // CRITICAL: Verify casino vault will remain rent-exempt after payout
+        let current_lamports = casino_vault.to_account_info().lamports();
+        let min_balance = rent.minimum_balance(casino_vault.to_account_info().data_len());
+        require!(
+            current_lamports.checked_sub(amount).unwrap_or(0) >= min_balance,
             VaultError::InsufficientBalance
         );
         

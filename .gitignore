@@ -44,6 +44,7 @@ yarn-error.log*
 Thumbs.db
 
 # Keys (NEVER commit!)
+keys/
 *.key
 *.keypair
 id.json
