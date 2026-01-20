@@ -19,7 +19,6 @@
     "anchor:test": "cd programs/vault && anchor test",
     "anchor:deploy:localnet": "cd programs/vault && anchor deploy --provider.cluster localnet",
     "anchor:deploy:testnet": "cd programs/vault && anchor deploy --provider.cluster testnet",
-    "db:migrate": "cd services/backend && cargo sqlx migrate run",
     "processor:dev": "cd services/processor && cargo run",
     "backend:dev": "cd services/backend && cargo run",
     "frontend:dev": "cd apps/frontend && pnpm dev"

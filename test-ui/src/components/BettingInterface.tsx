@@ -17,7 +17,10 @@ interface BettingInterfaceProps {
   allowanceRemaining?: bigint | null;
 }
 
-export function BettingInterface({ allowanceExists, allowanceRemaining }: BettingInterfaceProps) {
+export function BettingInterface({
+  allowanceExists,
+  // allowanceRemaining, // TODO: Use for display
+}: BettingInterfaceProps) {
   const { publicKey } = useWallet();
   const { createBet, isLoading } = useApi();
   const [amount, setAmount] = useState("0.01");
@@ -159,7 +162,8 @@ export function BettingInterface({ allowanceExists, allowanceRemaining }: Bettin
           <div className="p-3 bg-yellow-50 border border-yellow-300 rounded-lg flex items-start">
             <AlertCircle className="w-5 h-5 text-yellow-600 mr-2 flex-shrink-0 mt-0.5" />
             <div className="text-sm text-yellow-800">
-              <strong>No active allowance.</strong> Please approve an allowance in Vault Management before placing bets.
+              <strong>No active allowance.</strong> Please approve an allowance
+              in Vault Management before placing bets.
             </div>
           </div>
         )}

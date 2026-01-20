@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use shared::LamportAmount;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -42,9 +43,20 @@ pub struct CreateBetRequest {
     pub user_wallet: Option<String>,
     pub vault_address: Option<String>,
     pub allowance_pda: Option<String>,
-    pub stake_amount: u64,
+    #[serde(deserialize_with = "deserialize_lamport_amount")]
+    pub stake_amount: LamportAmount,
     pub stake_token: String,
     pub choice: String,
+}
+
+// Custom deserializer for LamportAmount from u64
+fn deserialize_lamport_amount<'de, D>(deserializer: D) -> Result<LamportAmount, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let amount_u64 = u64::deserialize(deserializer)?;
+    LamportAmount::try_from(amount_u64)
+        .map_err(|e| serde::de::Error::custom(format!("Invalid stake amount: {}", e)))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,15 +108,4 @@ pub struct PendingBetsResponse {
     pub bets: Vec<Bet>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuditLogEntry {
-    pub id: i64,
-    pub event_time: DateTime<Utc>,
-    pub event_type: String,
-    pub aggregate_id: String,
-    pub user_id: Option<String>,
-    pub before_state: Option<serde_json::Value>,
-    pub after_state: Option<serde_json::Value>,
-    pub metadata: Option<serde_json::Value>,
-    pub actor: String,
-}
+

@@ -203,12 +203,11 @@ pub struct ProcessedBet {
 }
 
 impl ProcessedBet {
-    // Max bet ID length
-    pub const MAX_BET_ID_LEN: usize = 64;
+    // Max signature length (base58 encoded transaction signature)
     pub const MAX_SIGNATURE_LEN: usize = 88;
     
     pub const LEN: usize = 8 + // discriminator
-        4 + Self::MAX_BET_ID_LEN + // bet_id (String with length prefix)
+        4 + MAX_BET_ID_LENGTH + // bet_id (String with length prefix)
         32 + // user
         8 + // amount
         8 + // processed_at
@@ -216,8 +215,33 @@ impl ProcessedBet {
         1; // bump
 }
 
-// Constants
-pub const MIN_BET_LAMPORTS: u64 = 10_000_000; // 0.01 SOL
-pub const MAX_BET_LAMPORTS: u64 = 1_000_000_000_000; // 1000 SOL
-pub const MAX_ALLOWANCE_DURATION: i64 = 86400; // 24 hours
-pub const MAX_ALLOWANCE_AMOUNT: u64 = 10_000_000_000_000; // 10,000 SOL
+// Constants with rationale
+
+/// Minimum bet amount in lamports (0.01 SOL)
+/// Rationale: Prevents spam bets and ensures meaningful transactions
+pub const MIN_BET_LAMPORTS: u64 = 10_000_000;
+
+/// Maximum bet amount in lamports (1000 SOL)
+/// Rationale: Anti-whale limit to prevent single bets from draining casino vault
+pub const MAX_BET_LAMPORTS: u64 = 1_000_000_000_000;
+
+/// Maximum allowance duration in seconds (24 hours)
+/// Rationale: Security limit to prevent indefinite allowances
+pub const MAX_ALLOWANCE_DURATION: i64 = 86400;
+
+/// Maximum allowance amount in lamports (10,000 SOL)
+/// Rationale: Caps total allowance to prevent catastrophic loss if compromised
+pub const MAX_ALLOWANCE_AMOUNT: u64 = 10_000_000_000_000;
+
+/// Rent-exempt reserve for casino vault (65-byte account)
+/// Pre-calculated rent to avoid repeated Rent::get() calls
+/// IMPORTANT: Must be updated if CasinoVault::LEN changes
+pub const RENT_EXEMPT_RESERVE_CASINO_VAULT: u64 = 1_343_280;
+
+/// Rent-exempt reserve for user vault (89-byte account)
+/// IMPORTANT: Must be updated if Vault::LEN changes
+pub const RENT_EXEMPT_RESERVE_USER_VAULT: u64 = 1_566_960;
+
+/// Maximum bet ID length (UUID without hyphens = 32 chars)
+/// Rationale: Solana PDA seeds have 32-byte limit per seed
+pub const MAX_BET_ID_LENGTH: usize = 32;

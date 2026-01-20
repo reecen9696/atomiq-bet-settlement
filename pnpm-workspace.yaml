@@ -1,5 +1,3 @@
 packages:
-  - 'programs/*'
-  - 'services/*'
-  - 'apps/*'
-  - 'packages/*'
+  - "test-ui"
+  - "services/*"

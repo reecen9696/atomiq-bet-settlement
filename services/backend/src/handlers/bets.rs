@@ -4,12 +4,15 @@ use axum::{
 };
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
+use solana_sdk::pubkey::Pubkey;
+use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::{
     domain::{Bet, CreateBetRequest},
     errors::{AppError, Result},
-    repository::{bet_repository::BetRepository, RedisBetRepository},
+    extractors::ValidatedJson,
+    repository::{BetRepository, RedisBetRepository},
     state::AppState,
 };
 
@@ -28,27 +31,64 @@ pub struct CreateBetResponse {
 pub async fn create_bet(
     State(state): State<AppState>,
     // TODO: Extract user_wallet from Privy authentication
-    Json(mut req): Json<CreateBetRequest>,
+    ValidatedJson(mut req): ValidatedJson<CreateBetRequest>,
 ) -> Result<Json<CreateBetResponse>> {
-    // Use provided user_wallet or placeholder for testing
+    // Create a tracing span for the entire bet creation lifecycle
+    let span = tracing::info_span!(
+        "create_bet",
+        bet.stake_amount = %req.stake_amount,
+        bet.choice = %req.choice,
+        bet.game_type = "coinflip"
+    );
+    let _enter = span.enter();
+
+    // Use provided user_wallet or a valid test wallet for development
     // In production, extract from authenticated session
-    let user_wallet = req.user_wallet.take().unwrap_or_else(|| "TEMP_WALLET_ADDRESS".to_string());
+    let user_wallet = req.user_wallet.take().unwrap_or_else(|| {
+        // Use a valid Solana public key for testing
+        "8JQCVcxGMN2kQKXDzgCEJN8AawnQskWU4ha6NqZ83uDm".to_string()
+    });
     let vault_address = req
         .vault_address
         .clone()
-        .unwrap_or_else(|| "TEMP_VAULT_ADDRESS".to_string());
+        .unwrap_or_else(|| {
+            // Use a valid Solana public key for testing
+            "7RGBCjZN9kbennyHHFjGSRDNXmguybWfNoMXXahtYfMm".to_string()
+        });
 
-    // Validate bet amount
-    if (req.stake_amount as i64) < state.config.betting.min_bet_lamports as i64
-        || (req.stake_amount as i64) > state.config.betting.max_bet_lamports as i64
-    {
-        return Err(AppError::InvalidInput(
-            "Bet amount outside allowed range".to_string(),
-        ));
+    // Validate that wallet addresses are valid Solana public keys
+    if Pubkey::from_str(&user_wallet).is_err() {
+        tracing::error!(
+            user_wallet = %user_wallet,
+            "Invalid user wallet public key provided"
+        );
+        return Err(AppError::invalid_input("Invalid user wallet address"));
     }
+    
+    if Pubkey::from_str(&vault_address).is_err() {
+        tracing::error!(
+            vault_address = %vault_address,
+            "Invalid vault address public key provided"
+        );
+        return Err(AppError::invalid_input("Invalid vault address"));
+    }
+
+    tracing::debug!(
+        user_wallet = %user_wallet,
+        vault_address = %vault_address,
+        "Creating bet"
+    );
+
+    // Validation is now handled by LamportAmount type during deserialization
+    // No need for manual range checks
 
     let repo = RedisBetRepository::new(state.redis.clone());
     let bet = repo.create(&user_wallet, &vault_address, req).await?;
+
+    tracing::info!(
+        bet_id = %bet.bet_id,
+        "Bet created successfully"
+    );
 
     // Publish to Redis stream for processor to pick up immediately
     let mut redis_conn = state.redis.clone();
@@ -61,7 +101,10 @@ pub async fn create_bet(
         .await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("Redis publish failed: {}", e)))?;
 
-    tracing::info!("Published bet {} to Redis stream", bet.bet_id);
+    tracing::info!(
+        bet_id = %bet.bet_id,
+        "Published bet to Redis stream"
+    );
     metrics::counter!("bets_created_total").increment(1);
 
     Ok(Json(CreateBetResponse { bet }))
@@ -71,12 +114,19 @@ pub async fn get_bet(
     State(state): State<AppState>,
     Path(bet_id): Path<Uuid>,
 ) -> Result<Json<Bet>> {
+    let span = tracing::info_span!("get_bet", %bet_id);
+    let _enter = span.enter();
+
     let repo = RedisBetRepository::new(state.redis.clone());
     let bet = repo
         .find_by_id(bet_id)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("Bet {} not found", bet_id)))?;
+        .ok_or_else(|| {
+            tracing::debug!("Bet not found");
+            AppError::not_found(format!("Bet {} not found", bet_id))
+        })?;
 
+    tracing::debug!(status = ?bet.status, "Bet retrieved");
     Ok(Json(bet))
 }
 
@@ -92,8 +142,17 @@ pub async fn list_user_bets(
     let limit = query.limit.unwrap_or(20).min(100);
     let offset = query.offset.unwrap_or(0);
 
+    let span = tracing::info_span!(
+        "list_user_bets",
+        user_wallet = %user_wallet,
+        limit,
+        offset
+    );
+    let _enter = span.enter();
+
     let repo = RedisBetRepository::new(state.redis.clone());
     let bets = repo.find_by_user(&user_wallet, limit, offset).await?;
 
+    tracing::debug!(bet_count = bets.len(), "Retrieved user bets");
     Ok(Json(bets))
 }

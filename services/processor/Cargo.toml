@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# Shared types and constants
+shared = { path = "../shared" }
+
 # Async runtime
 tokio = { workspace = true }
 async-trait = "0.1"
@@ -29,7 +32,7 @@ dotenvy = "0.15"
 
 # Logging
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["json", "env-filter"] }
 
 # UUID
 uuid = { workspace = true }
@@ -53,3 +56,7 @@ tokio-util = "0.7"
 
 # Random (for bet outcomes)
 rand = "0.8"
+
+[dev-dependencies]
+redis = { workspace = true }
+tokio-test = "0.4"

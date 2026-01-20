@@ -7,7 +7,11 @@ mod config;
 mod circuit_breaker;
 mod domain;
 mod retry_strategy;
+mod solana_account_parsing;
 mod solana_client;
+mod solana_instructions;
+mod solana_pda;
+mod solana_simulation;
 mod solana_tx;
 mod worker_pool;
 
@@ -16,20 +20,42 @@ use worker_pool::WorkerPool;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "processor=info".into()),
-        )
-        .with(tracing_subscriber::fmt::layer().json())
-        .init();
+    // Initialize structured logging with JSON formatting (configurable via env)
+    let use_json = std::env::var("LOG_FORMAT")
+        .unwrap_or_else(|_| "json".to_string())
+        .eq_ignore_ascii_case("json");
 
-    tracing::info!("Starting External Processor service");
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "processor=info".into());
+
+    if use_json {
+        // JSON structured logging for production
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(tracing_subscriber::fmt::layer().json())
+            .init();
+    } else {
+        // Human-readable logging for development
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(tracing_subscriber::fmt::layer())
+            .init();
+    }
+
+    tracing::info!(
+        service = "processor",
+        version = env!("CARGO_PKG_VERSION"),
+        log_format = if use_json { "json" } else { "text" },
+        "Starting processor service"
+    );
 
     // Load configuration
     let config = Config::load()?;
-    tracing::info!("Configuration loaded: {} workers", config.processor.worker_count);
+    tracing::info!(
+        worker_count = config.processor.worker_count,
+        batch_interval_seconds = config.processor.batch_interval_seconds,
+        "Configuration loaded"
+    );
 
     // Initialize Solana client pool
     let solana_client = Arc::new(
@@ -39,11 +65,17 @@ async fn main() -> Result<()> {
         )
         .await?,
     );
-    tracing::info!("Solana RPC pool initialized");
+    tracing::info!(
+        rpc_count = config.solana.rpc_urls.len(),
+        "Solana RPC pool initialized"
+    );
 
     // Load processor keypair
     let processor_keypair = solana_client::load_processor_keypair(&config.processor.keypair_path)?;
-    tracing::info!("Processor keypair loaded: {}", processor_keypair.pubkey().to_string());
+    tracing::info!(
+        processor_pubkey = %processor_keypair.pubkey(),
+        "Processor keypair loaded"
+    );
 
     // Initialize worker pool
     let worker_pool = Arc::new(WorkerPool::new(
@@ -63,7 +95,7 @@ async fn main() -> Result<()> {
         }
     });
 
-    tracing::info!("External Processor running");
+    tracing::info!("Processor running");
 
     // Wait for shutdown signal
     tokio::signal::ctrl_c().await?;
@@ -74,7 +106,7 @@ async fn main() -> Result<()> {
     worker_handle.abort();
     metrics_handle.abort();
 
-    tracing::info!("External Processor stopped");
+    tracing::info!("Processor stopped");
 
     Ok(())
 }

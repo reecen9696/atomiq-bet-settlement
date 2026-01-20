@@ -9,6 +9,26 @@ import {
   VersionedTransaction,
 } from "@solana/web3.js";
 import type { SendTransactionOptions } from "@solana/wallet-adapter-base";
+import {
+  parseVaultAccount,
+  parseCasinoAccount,
+  parseAllowanceAccount,
+  parseAllowanceNonceRegistryAccount,
+  buildIxData,
+  createUniqueMemoInstruction,
+  withRateLimitRetry,
+  sleep,
+  i64ToLeBytes,
+  u64ToLeBytes,
+  addPriorityFeeInstructions,
+  waitForConfirmation,
+} from "./solana/utils";
+import { PDADerivation } from "./solana/pda";
+import type {
+  VaultAccountState,
+  CasinoAccountState,
+  AllowanceAccountState,
+} from "./solana/types";
 
 const RPC_URL =
   import.meta.env.VITE_SOLANA_RPC_URL || "https://api.devnet.solana.com";
@@ -30,331 +50,13 @@ type SignAllTransactionsFn = (
   transactions: (Transaction | VersionedTransaction)[],
 ) => Promise<(Transaction | VersionedTransaction)[]>;
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function isRateLimitError(err: unknown): boolean {
-  const anyErr = err as any;
-  const msg = err instanceof Error ? err.message : String(err);
-  return (
-    anyErr?.code === 429 ||
-    msg.includes(" 429") ||
-    msg.includes('code": 429') ||
-    msg.toLowerCase().includes("too many requests") ||
-    msg.toLowerCase().includes("rate limit")
-  );
-}
-
-// Public Solana RPC endpoints (especially devnet) are aggressively rate-limited.
-// web3.js will also retry some 429s internally; if we *also* retry without
-// coordination, we can create a thundering herd. This helper:
-// - serializes our own RPC calls (concurrency=1)
-// - applies a global cooldown when 429s occur
-let rpcInFlight = 0;
-const rpcQueue: Array<() => void> = [];
-let rpcCooldownUntilMs = 0;
-
-async function acquireRpcSlot(): Promise<void> {
-  if (rpcInFlight === 0) {
-    rpcInFlight = 1;
-    return;
-  }
-  await new Promise<void>((resolve) => rpcQueue.push(resolve));
-  rpcInFlight = 1;
-}
-
-function releaseRpcSlot(): void {
-  rpcInFlight = 0;
-  const next = rpcQueue.shift();
-  if (next) next();
-}
-
-async function withRateLimitRetry<T>(
-  fn: () => Promise<T>,
-  opts?: { retries?: number; baseDelayMs?: number },
-): Promise<T> {
-  const retries = opts?.retries ?? 2;
-  const baseDelayMs = opts?.baseDelayMs ?? 1000;
-  let attempt = 0;
-
-  while (true) {
-    const now = Date.now();
-    if (rpcCooldownUntilMs > now) {
-      await sleep(rpcCooldownUntilMs - now);
-    }
-
-    await acquireRpcSlot();
-    try {
-      return await fn();
-    } catch (err) {
-      if (!isRateLimitError(err) || attempt >= retries) throw err;
-
-      const delay = baseDelayMs * Math.pow(2, attempt);
-      // Global cooldown so other calls back off too.
-      rpcCooldownUntilMs = Math.max(rpcCooldownUntilMs, Date.now() + delay);
-      attempt += 1;
-      // Small jitter to reduce synchronization.
-      await sleep(delay + Math.floor(Math.random() * 250));
-    } finally {
-      releaseRpcSlot();
-    }
-  }
-}
-
-export type VaultAccountState = {
-  owner: string;
-  casino: string;
-  bump: number;
-  solBalanceLamports: bigint;
-  createdAt: bigint;
-  lastActivity: bigint;
-};
-
-export type CasinoAccountState = {
-  authority: string;
-  processor: string;
-  treasury: string;
-  bump: number;
-  vaultAuthorityBump: number;
-  paused: boolean;
-  totalBets: bigint;
-  totalVolumeLamports: bigint;
-  createdAt: bigint;
-};
-
-export type AllowanceAccountState = {
-  user: string;
-  casino: string;
-  tokenMint: string;
-  amountLamports: bigint;
-  spentLamports: bigint;
-  expiresAt: bigint;
-  createdAt: bigint;
-  nonce: bigint;
-  revoked: boolean;
-  bump: number;
-  lastSpentAt: bigint;
-  spendCount: number;
-  remainingLamports: bigint;
-};
-
-export type AllowanceNonceRegistryState = {
-  user: string;
-  casino: string;
-  nextNonce: bigint;
-  bump: number;
-};
-
-function readPubkey(buf: Buffer, offset: number): PublicKey {
-  return new PublicKey(buf.subarray(offset, offset + 32));
-}
-
-function parseVaultAccount(data: Buffer): VaultAccountState {
-  // Anchor account layout: 8-byte discriminator + fields.
-  // Vault fields: owner(32) casino(32) bump(u8) sol_balance(u64) created_at(i64) last_activity(i64)
-  if (data.length < 8 + 32 + 32 + 1 + 8 + 8 + 8) {
-    throw new Error(`Vault account data too small: ${data.length} bytes`);
-  }
-  let off = 8;
-  const owner = readPubkey(data, off);
-  off += 32;
-  const casino = readPubkey(data, off);
-  off += 32;
-  const bump = data.readUInt8(off);
-  off += 1;
-  const solBalanceLamports = data.readBigUInt64LE(off);
-  off += 8;
-  const createdAt = data.readBigInt64LE(off);
-  off += 8;
-  const lastActivity = data.readBigInt64LE(off);
-
-  return {
-    owner: owner.toBase58(),
-    casino: casino.toBase58(),
-    bump,
-    solBalanceLamports,
-    createdAt,
-    lastActivity,
-  };
-}
-
-function parseCasinoAccount(data: Buffer): CasinoAccountState {
-  // Anchor account layout: 8-byte discriminator + fields.
-  // Casino fields:
-  // authority(32) processor(32) treasury(32) bump(u8) vault_authority_bump(u8)
-  // paused(bool) total_bets(u64) total_volume(u64) created_at(i64)
-  const minLen = 8 + 32 + 32 + 32 + 1 + 1 + 1 + 8 + 8 + 8;
-  if (data.length < minLen) {
-    throw new Error(`Casino account data too small: ${data.length} bytes`);
-  }
-
-  let off = 8;
-  const authority = readPubkey(data, off);
-  off += 32;
-  const processor = readPubkey(data, off);
-  off += 32;
-  const treasury = readPubkey(data, off);
-  off += 32;
-  const bump = data.readUInt8(off);
-  off += 1;
-  const vaultAuthorityBump = data.readUInt8(off);
-  off += 1;
-  const paused = data.readUInt8(off) !== 0;
-  off += 1;
-  const totalBets = data.readBigUInt64LE(off);
-  off += 8;
-  const totalVolumeLamports = data.readBigUInt64LE(off);
-  off += 8;
-  const createdAt = data.readBigInt64LE(off);
-
-  return {
-    authority: authority.toBase58(),
-    processor: processor.toBase58(),
-    treasury: treasury.toBase58(),
-    bump,
-    vaultAuthorityBump,
-    paused,
-    totalBets,
-    totalVolumeLamports,
-    createdAt,
-  };
-}
-
-function parseAllowanceAccount(data: Buffer): AllowanceAccountState {
-  // Anchor account layout: 8-byte discriminator + fields.
-  // Allowance fields:
-  // user(32) casino(32) token_mint(32) amount(u64) spent(u64) expires_at(i64)
-  // created_at(i64) nonce(u64) revoked(bool) bump(u8) last_spent_at(i64) spend_count(u32)
-  const minLen = 8 + 32 + 32 + 32 + 8 + 8 + 8 + 8 + 8 + 1 + 1 + 8 + 4;
-  if (data.length < minLen) {
-    throw new Error(`Allowance account data too small: ${data.length} bytes`);
-  }
-
-  let off = 8;
-  const user = readPubkey(data, off);
-  off += 32;
-  const casino = readPubkey(data, off);
-  off += 32;
-  const tokenMint = readPubkey(data, off);
-  off += 32;
-  const amountLamports = data.readBigUInt64LE(off);
-  off += 8;
-  const spentLamports = data.readBigUInt64LE(off);
-  off += 8;
-  const expiresAt = data.readBigInt64LE(off);
-  off += 8;
-  const createdAt = data.readBigInt64LE(off);
-  off += 8;
-  const nonce = data.readBigUInt64LE(off);
-  off += 8;
-  const revoked = data.readUInt8(off) !== 0;
-  off += 1;
-  const bump = data.readUInt8(off);
-  off += 1;
-  const lastSpentAt = data.readBigInt64LE(off);
-  off += 8;
-  const spendCount = data.readUInt32LE(off);
-
-  const remainingLamports =
-    amountLamports > spentLamports ? amountLamports - spentLamports : 0n;
-
-  return {
-    user: user.toBase58(),
-    casino: casino.toBase58(),
-    tokenMint: tokenMint.toBase58(),
-    amountLamports,
-    spentLamports,
-    expiresAt,
-    createdAt,
-    nonce,
-    revoked,
-    bump,
-    lastSpentAt,
-    spendCount,
-    remainingLamports,
-  };
-}
-
-function parseAllowanceNonceRegistryAccount(
-  data: Buffer,
-): AllowanceNonceRegistryState {
-  // Anchor account layout: 8-byte discriminator + fields.
-  // AllowanceNonceRegistry fields: user(32) casino(32) next_nonce(u64) bump(u8)
-  const minLen = 8 + 32 + 32 + 8 + 1;
-  if (data.length < minLen) {
-    throw new Error(
-      `AllowanceNonceRegistry account data too small: ${data.length} bytes`,
-    );
-  }
-
-  let off = 8;
-  const user = readPubkey(data, off);
-  off += 32;
-  const casino = readPubkey(data, off);
-  off += 32;
-  const nextNonce = data.readBigUInt64LE(off);
-  off += 8;
-  const bump = data.readUInt8(off);
-
-  return {
-    user: user.toBase58(),
-    casino: casino.toBase58(),
-    nextNonce,
-    bump,
-  };
-}
-
-function i64ToLeBytes(value: bigint): Buffer {
-  const buf = Buffer.alloc(8);
-  buf.writeBigInt64LE(value);
-  return buf;
-}
-
-function u64ToLeBytes(value: bigint): Buffer {
-  const buf = Buffer.alloc(8);
-  buf.writeBigUInt64LE(value);
-  return buf;
-}
-
-async function anchorDiscriminator(ixName: string): Promise<Buffer> {
-  // Anchor: first 8 bytes of sha256("global:<ix_name>")
-  const preimage = new TextEncoder().encode(`global:${ixName}`);
-  if (!globalThis.crypto?.subtle?.digest) {
-    throw new Error(
-      "WebCrypto not available: cannot compute Anchor discriminator",
-    );
-  }
-  const bytes: ArrayBuffer = preimage.buffer.slice(
-    preimage.byteOffset,
-    preimage.byteOffset + preimage.byteLength,
-  ) as ArrayBuffer;
-  const hash = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-  return Buffer.from(hash).subarray(0, 8);
-}
-
-async function buildIxData(ixName: string, args?: Buffer[]): Promise<Buffer> {
-  const disc = await anchorDiscriminator(ixName);
-  return Buffer.concat([disc, ...(args || [])]);
-}
-
-function createUniqueMemoInstruction(): TransactionInstruction {
-  // Create a memo with timestamp to make each transaction unique
-  // This prevents Solana's transaction deduplication from rejecting retries
-  const memo = `atomik-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  const memoData = Buffer.from(memo, "utf-8");
-
-  // Memo program ID on Solana
-  const MEMO_PROGRAM_ID = new PublicKey(
-    "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
-  );
-
-  return new TransactionInstruction({
-    keys: [],
-    programId: MEMO_PROGRAM_ID,
-    data: memoData,
-  });
-}
+// Re-export types from modules
+export type {
+  VaultAccountState,
+  CasinoAccountState,
+  AllowanceAccountState,
+  AllowanceNonceRegistryState,
+} from "./solana/types";
 
 function isUserRejectedError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
@@ -611,6 +313,7 @@ async function sendAndConfirm(
 export class SolanaService {
   private connection: Connection;
   private programId: PublicKey;
+  private pdaDerivation: PDADerivation;
 
   constructor() {
     this.connection = new Connection(RPC_URL, "confirmed");
@@ -618,6 +321,7 @@ export class SolanaService {
       throw new Error("Missing VITE_VAULT_PROGRAM_ID");
     }
     this.programId = new PublicKey(VAULT_PROGRAM_ID);
+    this.pdaDerivation = new PDADerivation(this.programId);
   }
 
   getProgramId(): string {
@@ -649,15 +353,7 @@ export class SolanaService {
   async deriveVaultPDA(userPublicKey: string): Promise<string> {
     try {
       const userPubKey = new PublicKey(userPublicKey);
-      const casino = await this.deriveCasinoPDA();
-      const [vaultPDA] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("vault"),
-          new PublicKey(casino).toBuffer(),
-          userPubKey.toBuffer(),
-        ],
-        this.programId,
-      );
+      const vaultPDA = this.pdaDerivation.deriveVaultPDA(userPubKey);
       return vaultPDA.toBase58();
     } catch (error) {
       console.error("Failed to derive vault PDA:", error);
@@ -666,37 +362,23 @@ export class SolanaService {
   }
 
   async deriveCasinoPDA(): Promise<string> {
-    const [casinoPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("casino")],
-      this.programId,
-    );
+    const casinoPda = this.pdaDerivation.deriveCasinoPDA();
     return casinoPda.toBase58();
   }
 
   async deriveVaultAuthorityPDA(): Promise<string> {
-    const casino = new PublicKey(await this.deriveCasinoPDA());
-    const [vaultAuthority] = PublicKey.findProgramAddressSync(
-      [Buffer.from("vault-authority"), casino.toBuffer()],
-      this.programId,
-    );
+    const vaultAuthority = this.pdaDerivation.deriveVaultAuthorityPDA();
     return vaultAuthority.toBase58();
   }
 
   async deriveCasinoVaultPDA(): Promise<string> {
-    const casino = new PublicKey(await this.deriveCasinoPDA());
-    const [casinoVault] = PublicKey.findProgramAddressSync(
-      [Buffer.from("casino-vault"), casino.toBuffer()],
-      this.programId,
-    );
+    const casinoVault = this.pdaDerivation.deriveCasinoVaultPDA();
     return casinoVault.toBase58();
   }
 
   async deriveRateLimiterPDA(userPublicKey: string): Promise<string> {
     const user = new PublicKey(userPublicKey);
-    const [rateLimiter] = PublicKey.findProgramAddressSync(
-      [Buffer.from("rate-limiter"), user.toBuffer()],
-      this.programId,
-    );
+    const rateLimiter = this.pdaDerivation.deriveRateLimiterPDA(user);
     return rateLimiter.toBase58();
   }
 
@@ -705,12 +387,12 @@ export class SolanaService {
     casinoPda?: string;
   }): Promise<string> {
     const user = new PublicKey(params.userPublicKey);
-    const casino = new PublicKey(
-      params.casinoPda ?? (await this.deriveCasinoPDA()),
-    );
-    const [registry] = PublicKey.findProgramAddressSync(
-      [Buffer.from("allowance-nonce"), user.toBuffer(), casino.toBuffer()],
-      this.programId,
+    const casino = params.casinoPda
+      ? new PublicKey(params.casinoPda)
+      : undefined;
+    const registry = this.pdaDerivation.deriveAllowanceNonceRegistryPDA(
+      user,
+      casino,
     );
     return registry.toBase58();
   }
@@ -894,6 +576,7 @@ export class SolanaService {
     // Add unique memo to prevent transaction deduplication errors
     const memoIx = createUniqueMemoInstruction();
     const tx = new Transaction().add(memoIx).add(ix);
+    addPriorityFeeInstructions(tx, 15000);
     tx.feePayer = params.authority;
 
     const signature = params.signTransaction
@@ -939,6 +622,7 @@ export class SolanaService {
     // Add unique memo to prevent transaction deduplication errors
     const memoIx = createUniqueMemoInstruction();
     const tx = new Transaction().add(memoIx).add(ix);
+    addPriorityFeeInstructions(tx, 15000);
     tx.feePayer = params.authority;
 
     const signature = params.signTransaction
@@ -980,6 +664,7 @@ export class SolanaService {
     // Add unique memo to prevent transaction deduplication errors
     const memoIx = createUniqueMemoInstruction();
     const tx = new Transaction().add(memoIx).add(ix);
+    addPriorityFeeInstructions(tx, 15000);
     tx.feePayer = params.authority;
 
     const signature = params.signTransaction
@@ -1018,6 +703,9 @@ export class SolanaService {
     // Add unique memo to prevent transaction deduplication errors
     const memoIx = createUniqueMemoInstruction();
     const tx = new Transaction().add(memoIx).add(ix);
+
+    // Add priority fees for vault initialization
+    addPriorityFeeInstructions(tx, 25000);
     tx.feePayer = params.user;
 
     const signature = params.signTransaction
@@ -1057,6 +745,7 @@ export class SolanaService {
     });
 
     const tx = new Transaction().add(ix);
+    addPriorityFeeInstructions(tx, 15000);
     tx.feePayer = params.user;
     const signature = params.signTransaction
       ? await signSendAndConfirm(connection, params.signTransaction, tx)
@@ -1095,6 +784,7 @@ export class SolanaService {
     });
 
     const tx = new Transaction().add(ix);
+    addPriorityFeeInstructions(tx, 15000);
     tx.feePayer = params.user;
     const signature = params.signTransaction
       ? await signSendAndConfirm(connection, params.signTransaction, tx)
@@ -1189,6 +879,9 @@ export class SolanaService {
     console.log("  Memo instruction data:", memoIx.data.toString("utf-8"));
 
     const tx = new Transaction().add(memoIx).add(ix);
+
+    // Add priority fees for faster processing on devnet
+    addPriorityFeeInstructions(tx, 50000); // Higher priority fee for allowance transactions
     tx.feePayer = params.user;
 
     console.log("  Total instructions in tx:", tx.instructions.length);
@@ -1199,10 +892,19 @@ export class SolanaService {
       const signature = await params.sendTransaction(tx, connection, {
         skipPreflight: false,
         preflightCommitment: "confirmed",
+        maxRetries: 3,
       });
 
-      // Wait for confirmation
-      await connection.confirmTransaction(signature, "confirmed");
+      // Use more robust confirmation with polling and longer timeout
+      console.log("⏳ Confirming transaction...");
+      await waitForConfirmation(
+        {
+          connection,
+          signature,
+          commitment: "confirmed",
+        },
+        { timeoutMs: 90_000 },
+      ); // 90 second timeout for devnet
 
       console.log("✅ Allowance approved! Signature:", signature);
       return {
@@ -1221,8 +923,16 @@ export class SolanaService {
           const signature = await params.sendTransaction(tx, connection, {
             skipPreflight: true,
             preflightCommitment: "confirmed",
+            maxRetries: 3,
           });
-          await connection.confirmTransaction(signature, "confirmed");
+          await waitForConfirmation(
+            {
+              connection,
+              signature,
+              commitment: "confirmed",
+            },
+            { timeoutMs: 90_000 },
+          );
           console.log("✅ Allowance approved! Signature:", signature);
           return {
             signature,
@@ -1263,6 +973,7 @@ export class SolanaService {
     // Add unique memo to prevent transaction deduplication
     const memoIx = createUniqueMemoInstruction();
     const tx = new Transaction().add(memoIx).add(ix);
+    addPriorityFeeInstructions(tx, 15000);
     tx.feePayer = params.user;
     const signature = params.signTransaction
       ? await signSendAndConfirm(connection, params.signTransaction, tx)
