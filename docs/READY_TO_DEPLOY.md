@@ -8,6 +8,7 @@
 ## What Was Accomplished
 
 ### ✅ Built Complete Backend Infrastructure
+
 - Backend API operational
 - Processor with 4-worker pool
 - PostgreSQL + Redis working
@@ -16,12 +17,14 @@
 ### ✅ **NEW: Real Blockchain Integration**
 
 **Just implemented:**
+
 - `services/processor/src/solana_tx.rs` - Real transaction builder
 - PDA derivation (user vault + casino vault)
 - Instruction building (spend_from_allowance + payout)
-- Feature flag: `USE_REAL_SOLANA` for easy switching
+- Production-ready: Always uses real Solana transactions
 
 **How it works:**
+
 ```bash
 # Testing mode (current)
 USE_REAL_SOLANA=false  # Uses simulated transactions
@@ -62,7 +65,7 @@ Database (Running ✅)
     ↓
 Processor (Running ✅)
     ├─ Worker Pool
-    ├─ Batch Processing  
+    ├─ Batch Processing
     └─ Solana TX Builder (NEW ✅)
          ↓
     Solana Blockchain (Ready to deploy 🚧)
@@ -74,17 +77,20 @@ Processor (Running ✅)
 ## Key Features
 
 ### Gasless Betting
+
 - User approves allowance once
 - Place unlimited bets without signing
 - Processor spends from allowance
 - User maintains self-custody
 
 ### Automatic Payouts
+
 - Winners receive payouts in same transaction
 - No claim needed
 - Funds already in user vault
 
 ### Safe Switching
+
 - Toggle between simulated/real via env var
 - No code changes needed
 - Instant rollback if issues
@@ -94,7 +100,7 @@ Processor (Running ✅)
 ## Documentation Created
 
 1. **ENABLING_BLOCKCHAIN.md** - Switch to real transactions
-2. **BLOCKCHAIN_INTEGRATION.md** - Full integration guide  
+2. **BLOCKCHAIN_INTEGRATION.md** - Full integration guide
 3. **CURRENT_STATUS.md** - System overview
 4. **E2E_TEST_REPORT.md** - Test results
 5. **INFRASTRUCTURE_STATUS.md** - Setup details
@@ -104,11 +110,11 @@ Processor (Running ✅)
 
 ## Performance
 
-| Mode | Processing | Throughput | Cost |
-|------|-----------|------------|------|
-| Simulated | 49ms | 122 bets/s | Free |
-| Real (Devnet) | 15-30s | 3-5 bets/s | Free |
-| Real (Mainnet) | 10-15s | 5-10 bets/s | $0.00001/bet |
+| Mode           | Processing | Throughput  | Cost         |
+| -------------- | ---------- | ----------- | ------------ |
+| Simulated      | 49ms       | 122 bets/s  | Free         |
+| Real (Devnet)  | 15-30s     | 3-5 bets/s  | Free         |
+| Real (Mainnet) | 10-15s     | 5-10 bets/s | $0.00001/bet |
 
 ---
 
@@ -129,13 +135,13 @@ Processor (Running ✅)
 ✅ Transaction builder  
 ✅ Anchor program code  
 ✅ Documentation  
-✅ Tests passing  
+✅ Tests passing
 
 ## What's Needed
 
 🚧 Deploy program to devnet  
 🚧 Initialize casino vault  
-🚧 Frontend wallet integration  
+🚧 Frontend wallet integration
 
 ---
 

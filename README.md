@@ -23,7 +23,7 @@ atomik-wallet/
 **Smart Contract:** Anchor 0.30.1  
 **Backend:** Rust (Actix-web, Tokio)  
 **Processor:** Rust (Tokio, multi-threaded workers)  
-**Storage:** Redis (in-memory bet queue)  
+**Storage:** Redis (in-memory bet management)  
 **Frontend:** React 18 + Vite + Solana wallet adapters
 
 ## Key Features
@@ -49,25 +49,19 @@ atomik-wallet/
 
 ```bash
 # Install dependencies
-pnpm install
+brew install redis
 
-# Copy environment variables
-cp .env.example .env
-# Edit .env with:
-# - VITE_VAULT_PROGRAM_ID=5sKSxXZ79DUJpnA8MVVmKsikKrQ4oG7TpNMJCjVzFnLf
-# - VITE_SOLANA_NETWORK=devnet
+# Start system (single command)
+./start.sh
 
-# Start Redis
-redis-server
-
-# Start backend (terminal 1)
-cd services/backend && cargo run --release
-
-# Start processor (terminal 2)
-cd services/processor && cargo run --release
-
-# Start test UI (terminal 3)
+# Start test UI (optional)
 cd test-ui && pnpm dev
+```
+
+### Stop System
+
+```bash
+./stop.sh
 ```
 
 ### Deploy to Solana Playground

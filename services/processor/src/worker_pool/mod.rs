@@ -7,7 +7,6 @@ mod pool;
 mod worker;
 mod batch_processor;
 mod backend_client;
-mod simulation;
 
 // Re-export the main interface
 pub use pool::WorkerPool;
@@ -16,4 +15,3 @@ pub use pool::WorkerPool;
 pub use worker::Worker;
 pub use batch_processor::BatchProcessor;
 pub use backend_client::BackendClient;
-pub use simulation::simulate_bets;

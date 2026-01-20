@@ -108,15 +108,4 @@ pub struct PendingBetsResponse {
     pub bets: Vec<Bet>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuditLogEntry {
-    pub id: i64,
-    pub event_time: DateTime<Utc>,
-    pub event_type: String,
-    pub aggregate_id: String,
-    pub user_id: Option<String>,
-    pub before_state: Option<serde_json::Value>,
-    pub after_state: Option<serde_json::Value>,
-    pub metadata: Option<serde_json::Value>,
-    pub actor: String,
-}
+

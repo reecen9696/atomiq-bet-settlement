@@ -1,7 +1,13 @@
 /**
  * Utility functions for Solana program interactions
  */
-import { PublicKey, TransactionInstruction, Transaction, Connection, ComputeBudgetProgram } from "@solana/web3.js";
+import {
+  PublicKey,
+  TransactionInstruction,
+  Transaction,
+  Connection,
+  ComputeBudgetProgram,
+} from "@solana/web3.js";
 import type {
   VaultAccountState,
   CasinoAccountState,
@@ -227,17 +233,20 @@ export function sleep(ms: number): Promise<void> {
 }
 
 // Add priority fee and compute unit instructions for better transaction processing
-export function addPriorityFeeInstructions(tx: Transaction, priorityFeeInMicroLamports: number = 10000): Transaction {
+export function addPriorityFeeInstructions(
+  tx: Transaction,
+  priorityFeeInMicroLamports: number = 10000,
+): Transaction {
   // Set compute unit limit - most betting transactions need ~100k units
   const computeUnitInstruction = ComputeBudgetProgram.setComputeUnitLimit({
     units: 200_000,
   });
-  
+
   // Set priority fee to ensure transaction gets processed quickly
   const priorityFeeInstruction = ComputeBudgetProgram.setComputeUnitPrice({
     microLamports: priorityFeeInMicroLamports,
   });
-  
+
   // Add these instructions at the beginning of the transaction
   tx.instructions.unshift(computeUnitInstruction, priorityFeeInstruction);
   return tx;
@@ -261,30 +270,42 @@ export async function waitForConfirmation(
   while (Date.now() - start < timeoutMs) {
     try {
       const status = await connection.getSignatureStatus(signature);
-      
+
       if (status.value?.err) {
-        throw new Error(`Transaction failed: ${JSON.stringify(status.value.err)}`);
+        throw new Error(
+          `Transaction failed: ${JSON.stringify(status.value.err)}`,
+        );
       }
-      
+
       if (status.value?.confirmationStatus) {
         if (commitment === "processed") return;
-        if (commitment === "confirmed" && 
-            (status.value.confirmationStatus === "confirmed" || 
-             status.value.confirmationStatus === "finalized")) return;
-        if (commitment === "finalized" && 
-            status.value.confirmationStatus === "finalized") return;
+        if (
+          commitment === "confirmed" &&
+          (status.value.confirmationStatus === "confirmed" ||
+            status.value.confirmationStatus === "finalized")
+        )
+          return;
+        if (
+          commitment === "finalized" &&
+          status.value.confirmationStatus === "finalized"
+        )
+          return;
       }
-      
+
       await sleep(pollIntervalMs);
     } catch (err) {
       if (Date.now() - start >= timeoutMs) {
-        throw new Error(`Confirmation timed out after ${Math.round(timeoutMs / 1000)}s for signature ${signature}`);
+        throw new Error(
+          `Confirmation timed out after ${Math.round(timeoutMs / 1000)}s for signature ${signature}`,
+        );
       }
       await sleep(pollIntervalMs);
     }
   }
-  
-  throw new Error(`Confirmation timed out after ${Math.round(timeoutMs / 1000)}s for signature ${signature}`);
+
+  throw new Error(
+    `Confirmation timed out after ${Math.round(timeoutMs / 1000)}s for signature ${signature}`,
+  );
 }
 
 export function isRateLimitError(err: unknown): boolean {

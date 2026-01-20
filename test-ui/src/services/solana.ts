@@ -703,7 +703,7 @@ export class SolanaService {
     // Add unique memo to prevent transaction deduplication errors
     const memoIx = createUniqueMemoInstruction();
     const tx = new Transaction().add(memoIx).add(ix);
-    
+
     // Add priority fees for vault initialization
     addPriorityFeeInstructions(tx, 25000);
     tx.feePayer = params.user;
@@ -879,7 +879,7 @@ export class SolanaService {
     console.log("  Memo instruction data:", memoIx.data.toString("utf-8"));
 
     const tx = new Transaction().add(memoIx).add(ix);
-    
+
     // Add priority fees for faster processing on devnet
     addPriorityFeeInstructions(tx, 50000); // Higher priority fee for allowance transactions
     tx.feePayer = params.user;
@@ -897,11 +897,14 @@ export class SolanaService {
 
       // Use more robust confirmation with polling and longer timeout
       console.log("⏳ Confirming transaction...");
-      await waitForConfirmation({
-        connection,
-        signature,
-        commitment: "confirmed",
-      }, { timeoutMs: 90_000 }); // 90 second timeout for devnet
+      await waitForConfirmation(
+        {
+          connection,
+          signature,
+          commitment: "confirmed",
+        },
+        { timeoutMs: 90_000 },
+      ); // 90 second timeout for devnet
 
       console.log("✅ Allowance approved! Signature:", signature);
       return {
@@ -922,11 +925,14 @@ export class SolanaService {
             preflightCommitment: "confirmed",
             maxRetries: 3,
           });
-          await waitForConfirmation({
-            connection,
-            signature,
-            commitment: "confirmed",
-          }, { timeoutMs: 90_000 });
+          await waitForConfirmation(
+            {
+              connection,
+              signature,
+              commitment: "confirmed",
+            },
+            { timeoutMs: 90_000 },
+          );
           console.log("✅ Allowance approved! Signature:", signature);
           return {
             signature,

@@ -4,6 +4,8 @@ use axum::{
 };
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
+use solana_sdk::pubkey::Pubkey;
+use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::{
@@ -40,13 +42,36 @@ pub async fn create_bet(
     );
     let _enter = span.enter();
 
-    // Use provided user_wallet or placeholder for testing
+    // Use provided user_wallet or a valid test wallet for development
     // In production, extract from authenticated session
-    let user_wallet = req.user_wallet.take().unwrap_or_else(|| "TEMP_WALLET_ADDRESS".to_string());
+    let user_wallet = req.user_wallet.take().unwrap_or_else(|| {
+        // Use a valid Solana public key for testing
+        "8JQCVcxGMN2kQKXDzgCEJN8AawnQskWU4ha6NqZ83uDm".to_string()
+    });
     let vault_address = req
         .vault_address
         .clone()
-        .unwrap_or_else(|| "TEMP_VAULT_ADDRESS".to_string());
+        .unwrap_or_else(|| {
+            // Use a valid Solana public key for testing
+            "7RGBCjZN9kbennyHHFjGSRDNXmguybWfNoMXXahtYfMm".to_string()
+        });
+
+    // Validate that wallet addresses are valid Solana public keys
+    if Pubkey::from_str(&user_wallet).is_err() {
+        tracing::error!(
+            user_wallet = %user_wallet,
+            "Invalid user wallet public key provided"
+        );
+        return Err(AppError::invalid_input("Invalid user wallet address"));
+    }
+    
+    if Pubkey::from_str(&vault_address).is_err() {
+        tracing::error!(
+            vault_address = %vault_address,
+            "Invalid vault address public key provided"
+        );
+        return Err(AppError::invalid_input("Invalid vault address"));
+    }
 
     tracing::debug!(
         user_wallet = %user_wallet,

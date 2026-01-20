@@ -3,6 +3,7 @@
 ## ✅ What's Working NOW (Simulated)
 
 ### Backend & Processor - Fully Operational
+
 - ✅ REST API for creating bets
 - ✅ PostgreSQL database storing bets/batches
 - ✅ Redis caching
@@ -16,6 +17,7 @@
 **Test Results:** 6/6 bets processed successfully in E2E test
 
 ### What's Simulated
+
 ```rust
 // Current code in services/processor/src/worker_pool.rs:270
 let signature = format!("SIM_{}", Uuid::new_v4());
@@ -29,11 +31,13 @@ let signature = format!("SIM_{}", Uuid::new_v4());
 ## 🎯 What's Built But Not Deployed
 
 ### 1. Solana Vault Program ✅
-**Location:** `programs/vault/src/`  
+
+**Location:** `solana-playground-deploy/programs/vault/src/`  
 **Status:** Code complete, not deployed  
 **Program ID (placeholder):** `Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS`
 
 **Features:**
+
 - ✅ User vault PDAs (self-custody)
 - ✅ Gasless betting via allowances
 - ✅ Deposit/withdraw SOL & USDC
@@ -42,30 +46,36 @@ let signature = format!("SIM_{}", Uuid::new_v4());
 - ✅ Rate limiting (10 approvals/hour)
 
 **To Deploy:**
+
 ```bash
 ./deploy-to-devnet.sh
 ```
 
 ### 2. Frontend Wallet UI ✅
+
 **Location:** `apps/frontend/src/components/`  
 **Status:** UI built, using mock data
 
 **Components:**
+
 - `VaultDashboard.tsx` - Balance & allowance display
 - `BetInterface.tsx` - Place bet UI
 - `WalletConnect.tsx` - Privy integration
 - `BetHistory.tsx` - Past bets
 
 **To Enable:**
+
 1. Deploy program
 2. Generate TypeScript IDL
 3. Implement VaultSDK (see BLOCKCHAIN_INTEGRATION.md)
 
 ### 3. Processor Solana Integration 🚧
+
 **Location:** `services/processor/src/worker_pool.rs`  
 **Status:** TODO comments in place
 
 **What's Needed:**
+
 ```rust
 // Replace this:
 let signature = format!("SIM_{}", Uuid::new_v4());
@@ -83,6 +93,7 @@ See `BLOCKCHAIN_INTEGRATION.md` for full implementation.
 ## 🔄 The Flow (Current vs With Blockchain)
 
 ### Current Flow (Simulated) ✅
+
 ```
 1. User → POST /api/bets → Backend
 2. Backend → Stores in PostgreSQL as "Pending"
@@ -96,6 +107,7 @@ See `BLOCKCHAIN_INTEGRATION.md` for full implementation.
 ```
 
 ### Future Flow (With Blockchain) 🎯
+
 ```
 1. User → Connect wallet (Privy)
 2. User → Initialize vault (on-chain PDA)
@@ -205,6 +217,7 @@ See `BLOCKCHAIN_INTEGRATION.md` for full implementation.
 ## 💡 Why It's Built This Way
 
 ### Gasless Betting Architecture
+
 **Problem:** Users don't want to sign every bet  
 **Solution:** Allowance pattern (like ERC20 approve)
 
@@ -214,6 +227,7 @@ See `BLOCKCHAIN_INTEGRATION.md` for full implementation.
 4. User can revoke anytime
 
 **Benefits:**
+
 - ✅ Better UX (no constant signing)
 - ✅ User stays in control
 - ✅ Non-custodial (funds in user's PDA)
@@ -224,6 +238,7 @@ See `BLOCKCHAIN_INTEGRATION.md` for full implementation.
 ## 🚀 Quick Start to Enable Blockchain
 
 ### Option 1: Deploy Everything (Recommended)
+
 ```bash
 # 1. Deploy program to devnet
 ./deploy-to-devnet.sh
@@ -250,6 +265,7 @@ pnpm dev
 ```
 
 ### Option 2: Test Program Only
+
 ```bash
 # Just test the Anchor program
 cd programs/vault
@@ -267,11 +283,13 @@ anchor test
 ## 📈 Performance Expectations
 
 ### Current (Simulated)
+
 - Batch processing: 48ms
 - Throughput: 122 bets/sec
 - Success rate: 100%
 
 ### With Blockchain (Estimated)
+
 - Batch processing: 10-30 seconds (Solana confirmation)
 - Throughput: 20-40 bets/sec (with batching)
 - Success rate: 95-98% (network conditions)
@@ -281,14 +299,14 @@ anchor test
 
 ## 🎯 Current Status Summary
 
-| Component | Status | Next Step |
-|-----------|--------|-----------|
-| Backend API | ✅ Working | Add on-chain validation |
-| Database | ✅ Working | No changes needed |
-| Processor | ✅ Working (simulated) | Replace with real TX |
-| Anchor Program | 🚧 Ready to deploy | Run `./deploy-to-devnet.sh` |
-| Frontend UI | 🚧 Mock data | Implement VaultSDK |
-| E2E Tests | ✅ Passing | Add blockchain tests |
+| Component      | Status                 | Next Step                   |
+| -------------- | ---------------------- | --------------------------- |
+| Backend API    | ✅ Working             | Add on-chain validation     |
+| Database       | ✅ Working             | No changes needed           |
+| Processor      | ✅ Working (simulated) | Replace with real TX        |
+| Anchor Program | 🚧 Ready to deploy     | Run `./deploy-to-devnet.sh` |
+| Frontend UI    | 🚧 Mock data           | Implement VaultSDK          |
+| E2E Tests      | ✅ Passing             | Add blockchain tests        |
 
 ---
 
@@ -297,25 +315,31 @@ anchor test
 **You can continue in two ways:**
 
 ### Path A: Keep Simulating (Current State) ✅
+
 **Good for:**
+
 - Testing business logic
 - Load testing
 - UI/UX development
 - Database optimization
 
 **Limitations:**
+
 - No real funds
 - Can't test wallet integration
 - No on-chain transparency
 
 ### Path B: Deploy to Blockchain 🚀
+
 **Good for:**
+
 - Real user testing
 - Wallet integration
 - Full end-to-end validation
 - Demo to investors/users
 
 **Requirements:**
+
 - Deploy program (~30 min)
 - Update processor (~2-3 hours)
 - Update frontend (~3-4 hours)
@@ -328,12 +352,14 @@ anchor test
 ## 🎉 Bottom Line
 
 **What works today:**
+
 - ✅ Full backend/processor infrastructure
 - ✅ 6/6 bets processed in E2E test
 - ✅ All core logic validated
 - ✅ Ready for production architecture
 
 **What's 1 day away:**
+
 - 🚀 Real Solana transactions
 - 🚀 Wallet integration
 - 🚀 On-chain transparency

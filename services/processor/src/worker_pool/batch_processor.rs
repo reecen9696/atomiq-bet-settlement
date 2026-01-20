@@ -16,7 +16,6 @@ use crate::retry_strategy::RetryStrategy;
 use crate::solana_client::SolanaClientPool;
 
 use super::backend_client::BackendClient;
-use super::simulation::simulate_bets;
 use crate::domain::UpdateBatchRequest;
 
 /// Orchestrates batch processing for a worker
@@ -212,23 +211,19 @@ impl BatchProcessor {
         );
         let _enter = span.enter();
 
-        // Check if we should use real Solana transactions
-        let use_real_solana = std::env::var("USE_REAL_SOLANA")
-            .unwrap_or_else(|_| "false".to_string())
-            .parse::<bool>()
-            .unwrap_or(false);
-
-        if use_real_solana {
-            // If any bet has an invalid pubkey (common in local/POC calls), fall back to simulation
-            // instead of thrashing the queue.
-            for bet in bets {
-                if solana_sdk::pubkey::Pubkey::from_str(&bet.user_wallet).is_err() {
-                    tracing::warn!(
-                        bet_id = %bet.bet_id,
-                        user_wallet = %bet.user_wallet,
-                        "Invalid user wallet pubkey; falling back to simulation"
-                    );
-                    return simulate_bets(bets).await;
+        // Always use real Solana transactions (production mode)
+        // If any bet has an invalid pubkey, this is a configuration error that should be fixed
+        for bet in bets {
+            if solana_sdk::pubkey::Pubkey::from_str(&bet.user_wallet).is_err() {
+                tracing::error!(
+                    bet_id = %bet.bet_id,
+                    user_wallet = %bet.user_wallet,
+                    "Invalid user wallet pubkey - this is a configuration error"
+                );
+                return Err(anyhow::anyhow!(
+                    "Invalid user wallet pubkey: {}. Check bet validation.",
+                    bet.user_wallet
+                ));
                 }
             }
 
@@ -251,10 +246,5 @@ impl BatchProcessor {
                 &vault_program_id,
                 self.config.processor.max_bets_per_tx,
             ).await
-        } else {
-            // Simulated transaction for testing
-            tracing::debug!("Using simulated Solana transaction");
-            simulate_bets(bets).await
-        }
     }
 }

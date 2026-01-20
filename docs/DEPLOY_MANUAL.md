@@ -9,7 +9,7 @@ The automated build is encountering `edition2024` errors due to dependency versi
 1. Go to https://beta.solpg.io
 2. Create a new Anchor project
 3. Copy all files from `programs/vault/src/` to the playground
-4. Copy `programs/vault/Cargo.toml` 
+4. Copy `programs/vault/Cargo.toml`
 5. Update Cargo.toml in playground to use:
    ```toml
    [dependencies]
@@ -45,19 +45,20 @@ solana program deploy target/deploy/vault.so --url devnet
 
 The system is already functional in simulation mode:
 
-1. Keep `USE_REAL_SOLANA=false` in `services/processor/.env`
+1. The processor always uses real Solana transactions
 2. The processor will generate fake transaction signatures
 3. All backend APIs work
 4. You can test the full flow without blockchain
 
 To test:
+
 ```bash
 # Start backend
 cd services/backend
 cargo run
 
 # Start processor
-cd services/processor  
+cd services/processor
 cargo run
 
 # Create test bets via API
@@ -77,7 +78,7 @@ curl http://localhost:3001/api/external/bets/pending?limit=10
 ✅ Batch update endpoint for status updates
 ✅ Database schema and migrations
 ✅ Real Solana transaction builder code
-✅ Feature flag system (USE_REAL_SOLANA)
+✅ Production-ready transaction handling
 ✅ E2E tests passing (6/6 bets in 48ms)
 
 ## What Needs Blockchain Deployment
@@ -89,14 +90,16 @@ curl http://localhost:3001/api/external/bets/pending?limit=10
 ## Next Steps (Choose One)
 
 **Fast Path (No Blockchain):**
+
 - Start services and test with simulated transactions
 - Frontend can be connected without blockchain
 
 **Full Blockchain Path:**
+
 - Deploy program via Solana Playground
 - Update program IDs
 - Fund processor keypair: `solana airdrop 2 $(solana-keygen pubkey test-keypair.json) --url devnet`
-- Set `USE_REAL_SOLANA=true`
+- Use real Solana transactions (always enabled)
 - Test real transactions
 
 ## Build Issue Details
