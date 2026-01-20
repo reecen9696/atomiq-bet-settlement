@@ -20,6 +20,8 @@ import {
   sleep,
   i64ToLeBytes,
   u64ToLeBytes,
+  addPriorityFeeInstructions,
+  waitForConfirmation,
 } from "./solana/utils";
 import { PDADerivation } from "./solana/pda";
 import type {
@@ -574,6 +576,7 @@ export class SolanaService {
     // Add unique memo to prevent transaction deduplication errors
     const memoIx = createUniqueMemoInstruction();
     const tx = new Transaction().add(memoIx).add(ix);
+    addPriorityFeeInstructions(tx, 15000);
     tx.feePayer = params.authority;
 
     const signature = params.signTransaction
@@ -619,6 +622,7 @@ export class SolanaService {
     // Add unique memo to prevent transaction deduplication errors
     const memoIx = createUniqueMemoInstruction();
     const tx = new Transaction().add(memoIx).add(ix);
+    addPriorityFeeInstructions(tx, 15000);
     tx.feePayer = params.authority;
 
     const signature = params.signTransaction
@@ -660,6 +664,7 @@ export class SolanaService {
     // Add unique memo to prevent transaction deduplication errors
     const memoIx = createUniqueMemoInstruction();
     const tx = new Transaction().add(memoIx).add(ix);
+    addPriorityFeeInstructions(tx, 15000);
     tx.feePayer = params.authority;
 
     const signature = params.signTransaction
@@ -698,6 +703,9 @@ export class SolanaService {
     // Add unique memo to prevent transaction deduplication errors
     const memoIx = createUniqueMemoInstruction();
     const tx = new Transaction().add(memoIx).add(ix);
+    
+    // Add priority fees for vault initialization
+    addPriorityFeeInstructions(tx, 25000);
     tx.feePayer = params.user;
 
     const signature = params.signTransaction
@@ -737,6 +745,7 @@ export class SolanaService {
     });
 
     const tx = new Transaction().add(ix);
+    addPriorityFeeInstructions(tx, 15000);
     tx.feePayer = params.user;
     const signature = params.signTransaction
       ? await signSendAndConfirm(connection, params.signTransaction, tx)
@@ -775,6 +784,7 @@ export class SolanaService {
     });
 
     const tx = new Transaction().add(ix);
+    addPriorityFeeInstructions(tx, 15000);
     tx.feePayer = params.user;
     const signature = params.signTransaction
       ? await signSendAndConfirm(connection, params.signTransaction, tx)
@@ -869,6 +879,9 @@ export class SolanaService {
     console.log("  Memo instruction data:", memoIx.data.toString("utf-8"));
 
     const tx = new Transaction().add(memoIx).add(ix);
+    
+    // Add priority fees for faster processing on devnet
+    addPriorityFeeInstructions(tx, 50000); // Higher priority fee for allowance transactions
     tx.feePayer = params.user;
 
     console.log("  Total instructions in tx:", tx.instructions.length);
@@ -879,10 +892,16 @@ export class SolanaService {
       const signature = await params.sendTransaction(tx, connection, {
         skipPreflight: false,
         preflightCommitment: "confirmed",
+        maxRetries: 3,
       });
 
-      // Wait for confirmation
-      await connection.confirmTransaction(signature, "confirmed");
+      // Use more robust confirmation with polling and longer timeout
+      console.log("⏳ Confirming transaction...");
+      await waitForConfirmation({
+        connection,
+        signature,
+        commitment: "confirmed",
+      }, { timeoutMs: 90_000 }); // 90 second timeout for devnet
 
       console.log("✅ Allowance approved! Signature:", signature);
       return {
@@ -901,8 +920,13 @@ export class SolanaService {
           const signature = await params.sendTransaction(tx, connection, {
             skipPreflight: true,
             preflightCommitment: "confirmed",
+            maxRetries: 3,
           });
-          await connection.confirmTransaction(signature, "confirmed");
+          await waitForConfirmation({
+            connection,
+            signature,
+            commitment: "confirmed",
+          }, { timeoutMs: 90_000 });
           console.log("✅ Allowance approved! Signature:", signature);
           return {
             signature,
@@ -943,6 +967,7 @@ export class SolanaService {
     // Add unique memo to prevent transaction deduplication
     const memoIx = createUniqueMemoInstruction();
     const tx = new Transaction().add(memoIx).add(ix);
+    addPriorityFeeInstructions(tx, 15000);
     tx.feePayer = params.user;
     const signature = params.signTransaction
       ? await signSendAndConfirm(connection, params.signTransaction, tx)
