@@ -4,7 +4,7 @@
 const { PublicKey } = require("@solana/web3.js");
 
 const PROGRAM_ID = new PublicKey(
-  "HTg6Cs11FNiRXjQ2wFiQodKrVuTQdEJYk8j4RtfX56rP",
+  "BtZT2B1NkEGZwNT5CS326HbdbXzggiTYSUiYmSDyhTDJ",
 );
 const USER_WALLET = new PublicKey(
   "LCsLwQ74zUfa5UDA6fNTRPyddH6akTd6S1fkdMAQQj8",

@@ -1,8 +1,8 @@
 //! Batch processing orchestration
 //!
-//! Handles the full lifecycle of batch processing: fetch, execute, update.
+//! Handles the full lifecycle of batch processing: fetch from blockchain, execute on Solana, update blockchain.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use reqwest::Client;
 use solana_sdk::signature::Keypair;
 use std::sync::Arc;
@@ -11,12 +11,10 @@ use uuid::Uuid;
 
 use crate::circuit_breaker::CircuitBreaker;
 use crate::config::Config;
-use crate::domain::{BatchStatus, Bet, BetResult, BetStatus};
+use crate::domain::Bet;
 use crate::retry_strategy::RetryStrategy;
 use crate::solana_client::SolanaClientPool;
-
-use super::backend_client::BackendClient;
-use crate::domain::UpdateBatchRequest;
+use crate::blockchain_client::{BlockchainClient, GameSettlementInfo};
 
 /// Orchestrates batch processing for a worker
 #[derive(Clone)]
@@ -24,14 +22,13 @@ pub struct BatchProcessor {
     pub solana_client: Arc<SolanaClientPool>,
     pub processor_keypair: Arc<Keypair>,
     pub http: Client,
-    pub backend_base_url: String,
     pub retry_strategy: RetryStrategy,
     pub circuit_breaker: Arc<CircuitBreaker>,
     pub config: Config,
 }
 
 impl BatchProcessor {
-    /// Process a single batch of bets
+    /// Process a single batch of settlements from blockchain
     pub async fn process_batch(&self, worker_id: usize) -> Result<()> {
         let start_time = std::time::Instant::now();
 
@@ -43,36 +40,34 @@ impl BatchProcessor {
         );
         let _enter = span.enter();
 
-        // Create backend client
-        let backend_client = BackendClient::new(self.backend_base_url.clone());
+        // Create blockchain client
+        let blockchain_client = BlockchainClient::new(
+            self.config.blockchain.api_base_url.clone(),
+            self.config.blockchain.api_key.clone(),
+        );
 
-        // Phase 1: Fetch + claim pending bets from backend
-        let processor_id = format!("worker-{}", worker_id);
-        let claim_limit = self.config.processor.batch_size;
-        
-        let resp = backend_client
-            .fetch_pending_bets(claim_limit, &processor_id)
+        // Phase 1: Fetch pending settlements from blockchain
+        let settlements = blockchain_client
+            .fetch_pending_settlements(self.config.blockchain.settlement_batch_size)
             .await?;
 
-        if resp.bets.is_empty() {
-            tracing::trace!("No pending bets to process");
+        if settlements.is_empty() {
+            tracing::trace!("No pending settlements to process");
             return Ok(());
         }
 
         tracing::info!(
-            batch_id = %resp.batch_id,
-            bet_count = resp.bets.len(),
+            settlement_count = settlements.len(),
             max_bets_per_tx = self.config.processor.max_bets_per_tx,
-            "Processing batch of pending bets"
+            "Processing batch of pending settlements from blockchain"
         );
 
-        metrics::gauge!("pending_bets_fetched").set(resp.bets.len() as f64);
+        metrics::gauge!("pending_settlements_fetched").set(settlements.len() as f64);
 
-        // Phase 2: Execute bets on Solana (simulate coinflip for POC)
-        // Split into chunks so we don't exceed tx size/compute limits.
+        // Phase 2: Split into chunks for Solana (max 12 bets per transaction)
         let max_per_tx = self.config.processor.max_bets_per_tx.max(1);
 
-        for (chunk_idx, chunk) in resp.bets.chunks(max_per_tx).enumerate() {
+        for (chunk_idx, chunk) in settlements.chunks(max_per_tx).enumerate() {
             let chunk_span = tracing::info_span!(
                 "process_chunk",
                 chunk_idx,
@@ -80,9 +75,16 @@ impl BatchProcessor {
             );
             let _chunk_enter = chunk_span.enter();
 
-            let bet_results = self.execute_bets_on_solana(chunk).await;
+            // Convert settlements to Bet format
+            let bets: Vec<Bet> = chunk
+                .iter()
+                .map(|s| self.settlement_to_bet(s))
+                .collect::<Result<Vec<_>>>()?;
 
-            match bet_results {
+            // Execute on Solana
+            let result = self.execute_settlements_on_solana(&bets).await;
+
+            match result {
                 Ok((signature, results)) => {
                     tracing::info!(
                         signature = %signature,
@@ -90,97 +92,109 @@ impl BatchProcessor {
                         "Chunk executed successfully on Solana"
                     );
 
-                    // Phase 3: Mark chunk submitted
-                    backend_client.post_batch_update(
-                        resp.batch_id,
-                        UpdateBatchRequest {
-                            status: BatchStatus::Submitted,
-                            solana_tx_id: Some(signature.clone()),
-                            error_message: None,
-                            bet_results: chunk
-                                .iter()
-                                .map(|b| BetResult {
-                                    bet_id: b.bet_id,
-                                    status: BetStatus::SubmittedToSolana,
-                                    solana_tx_id: Some(signature.clone()),
-                                    error_message: None,
-                                    won: None,
-                                    payout_amount: None,
-                                })
-                                .collect(),
-                        },
-                    )
-                    .await?;
-
-                    // Phase 4: Mark chunk confirmed + bets completed
-                    backend_client.post_batch_update(
-                        resp.batch_id,
-                        UpdateBatchRequest {
-                            status: BatchStatus::Confirmed,
-                            solana_tx_id: Some(signature.clone()),
-                            error_message: None,
-                            bet_results: results
-                                .into_iter()
-                                .map(|(bet_id, won, payout_amount)| {
-                                    tracing::debug!(
-                                        %bet_id,
-                                        won,
-                                        payout_amount,
-                                        "Bet completed"
+                    // Phase 3: Update settlement statuses on blockchain
+                    for (settlement, (bet_id, won, payout)) in chunk.iter().zip(results.iter()) {
+                        match blockchain_client
+                            .update_settlement_status(
+                                settlement.transaction_id,
+                                "SettlementComplete",
+                                Some(signature.clone()),
+                                None, // No error on success
+                                settlement.version,
+                            )
+                            .await
+                        {
+                            Ok(new_version) => {
+                                tracing::info!(
+                                    tx_id = settlement.transaction_id,
+                                    bet_id = %bet_id,
+                                    won,
+                                    payout,
+                                    new_version,
+                                    signature = %signature,
+                                    "Settlement completed and status updated on blockchain"
+                                );
+                            }
+                            Err(e) => {
+                                let error_str = e.to_string();
+                                // If it's a version conflict, another worker already updated it - not critical
+                                if error_str.contains("Version conflict") || error_str.contains("already processed") {
+                                    tracing::warn!(
+                                        tx_id = settlement.transaction_id,
+                                        bet_id = %bet_id,
+                                        signature = %signature,
+                                        "Settlement already updated by another worker - skipping"
                                     );
-                                    BetResult {
-                                        bet_id,
-                                        status: BetStatus::Completed,
-                                        solana_tx_id: Some(signature.clone()),
-                                        error_message: None,
-                                        won: Some(won),
-                                        payout_amount: Some(payout_amount),
-                                    }
-                                })
-                                .collect(),
-                        },
-                    )
-                    .await?;
+                                    metrics::counter!("settlement_duplicate_processing_total").increment(1);
+                                } else {
+                                    tracing::error!(
+                                        tx_id = settlement.transaction_id,
+                                        bet_id = %bet_id,
+                                        signature = %signature,
+                                        error = %e,
+                                        "CRITICAL: Failed to update settlement status (Solana succeeded but blockchain update failed)"
+                                    );
+                                    metrics::counter!("settlement_status_update_failures_total").increment(1);
+                                }
+                                // Continue processing other settlements even if one update fails
+                            }
+                        }
+                    }
 
-                    tracing::info!(
-                        signature = %signature,
-                        "Chunk marked as confirmed"
-                    );
+                    metrics::counter!("settlements_processed_total").increment(chunk.len() as u64);
                 }
                 Err(e) => {
                     tracing::error!(
-                        batch_id = %resp.batch_id,
                         chunk_idx,
+                        chunk_size = chunk.len(),
                         error = %e,
-                        "Batch chunk failed"
+                        "Settlement chunk failed on Solana"
                     );
 
-                    // Best-effort: mark this chunk retryable again.
-                    let _ = backend_client
-                        .post_batch_update(
-                            resp.batch_id,
-                            UpdateBatchRequest {
-                                status: BatchStatus::Failed,
-                                solana_tx_id: None,
-                                error_message: Some(e.to_string()),
-                                bet_results: chunk
-                                    .iter()
-                                    .map(|b| BetResult {
-                                        bet_id: b.bet_id,
-                                        status: BetStatus::FailedRetryable,
-                                        solana_tx_id: None,
-                                        error_message: Some(e.to_string()),
-                                        won: None,
-                                        payout_amount: None,
-                                    })
-                                    .collect(),
-                            },
-                        )
-                        .await;
+                    // Update all settlements in this chunk as failed
+                    for settlement in chunk {
+                        let error_msg = format!("Solana transaction failed: {}", e);
+                        match blockchain_client
+                            .update_settlement_status(
+                                settlement.transaction_id,
+                                "SettlementFailed",
+                                None,
+                                Some(error_msg.clone()),
+                                settlement.version,
+                            )
+                            .await
+                        {
+                            Ok(new_version) => {
+                                tracing::warn!(
+                                    tx_id = settlement.transaction_id,
+                                    new_version,
+                                    error = %error_msg,
+                                    "Settlement marked as failed on blockchain"
+                                );
+                            }
+                            Err(update_err) => {
+                                let error_str = update_err.to_string();
+                                if error_str.contains("Version conflict") || error_str.contains("already processed") {
+                                    tracing::warn!(
+                                        tx_id = settlement.transaction_id,
+                                        "Settlement already processed by another worker - skipping failure report"
+                                    );
+                                } else {
+                                    tracing::error!(
+                                        tx_id = settlement.transaction_id,
+                                        solana_error = %e,
+                                        update_error = %update_err,
+                                        "CRITICAL: Failed to report settlement failure to blockchain API"
+                                    );
+                                    metrics::counter!("settlement_failure_report_errors_total").increment(1);
+                                }
+                            }
+                        }
+                    }
 
-                    metrics::counter!("batch_chunk_failures_total").increment(1);
+                    metrics::counter!("settlement_chunk_failures_total").increment(1);
 
-                    // Stop this worker's batch loop early; remaining bets will be re-claimed later.
+                    // Stop processing this batch
                     return Err(e);
                 }
             }
@@ -188,9 +202,8 @@ impl BatchProcessor {
 
         let elapsed = start_time.elapsed();
         tracing::info!(
-            batch_id = %resp.batch_id,
             duration_ms = elapsed.as_millis(),
-            bet_count = resp.bets.len(),
+            settlement_count = settlements.len(),
             "Batch completed successfully"
         );
 
@@ -200,51 +213,79 @@ impl BatchProcessor {
         Ok(())
     }
 
-    /// Execute bets on Solana (or simulate for testing)
-    async fn execute_bets_on_solana(
+    /// Convert GameSettlementInfo to Bet format for Solana submission
+    fn settlement_to_bet(&self, settlement: &GameSettlementInfo) -> Result<Bet> {
+        Ok(Bet {
+            bet_id: Uuid::new_v4(), // Generate UUID for tracking
+            created_at: chrono::Utc::now(),
+            user_wallet: settlement.player_address.clone(),
+            vault_address: String::new(), // Will be derived in Solana tx building
+            allowance_pda: None, // Will be derived in Solana tx building
+            casino_id: None,
+            game_type: settlement.game_type.clone(),
+            stake_amount: settlement.bet_amount as i64,
+            stake_token: settlement.token.clone(),
+            choice: "heads".to_string(), // Not relevant for settlements (already determined)
+            status: crate::domain::BetStatus::Pending,
+            external_batch_id: None,
+            solana_tx_id: None,
+            retry_count: 0,
+            processor_id: None,
+            last_error_code: None,
+            last_error_message: None,
+            payout_amount: Some(settlement.payout as i64),
+            won: Some(settlement.outcome == "Win"),
+        })
+    }
+
+    /// Execute settlements on Solana
+    async fn execute_settlements_on_solana(
         &self,
         bets: &[Bet],
     ) -> Result<(String, Vec<(Uuid, bool, i64)>)> {
         let span = tracing::debug_span!(
-            "execute_bets_on_solana",
+            "execute_settlements_on_solana",
             bet_count = bets.len()
         );
         let _enter = span.enter();
 
-        // Always use real Solana transactions (production mode)
-        // If any bet has an invalid pubkey, this is a configuration error that should be fixed
+        // Validate all user wallets are valid pubkeys
         for bet in bets {
             if solana_sdk::pubkey::Pubkey::from_str(&bet.user_wallet).is_err() {
                 tracing::error!(
                     bet_id = %bet.bet_id,
                     user_wallet = %bet.user_wallet,
-                    "Invalid user wallet pubkey - this is a configuration error"
+                    "Invalid user wallet pubkey"
                 );
                 return Err(anyhow::anyhow!(
-                    "Invalid user wallet pubkey: {}. Check bet validation.",
+                    "Invalid user wallet pubkey: {}",
                     bet.user_wallet
                 ));
-                }
             }
+        }
 
-            // Real Solana transaction
-            tracing::info!("Submitting real Solana transaction");
-            let client = self
-                .solana_client
-                .get_healthy_client_or_any()
-                .await
-                .ok_or_else(|| anyhow::anyhow!("No RPC clients configured"))?;
-            
-            let vault_program_id = solana_sdk::pubkey::Pubkey::from_str(
-                &std::env::var("VAULT_PROGRAM_ID")?
-            )?;
-            
-            crate::solana_tx::submit_batch_transaction(
-                &client,
-                bets,
-                &self.processor_keypair,
-                &vault_program_id,
-                self.config.processor.max_bets_per_tx,
-            ).await
+        // Get healthy Solana client
+        let client = self
+            .solana_client
+            .get_healthy_client_or_any()
+            .await
+            .ok_or_else(|| anyhow::anyhow!("No RPC clients configured"))?;
+
+        // Get vault program ID from environment
+        let vault_program_id = solana_sdk::pubkey::Pubkey::from_str(
+            &std::env::var("VAULT_PROGRAM_ID").context("VAULT_PROGRAM_ID not set")?
+        )
+        .context("Invalid VAULT_PROGRAM_ID")?;
+
+        // Submit batch transaction to Solana
+        tracing::info!(bet_count = bets.len(), "Submitting batch to Solana");
+        crate::solana_tx::submit_batch_transaction(
+            &client,
+            bets,
+            &self.processor_keypair,
+            &vault_program_id,
+            self.config.processor.max_bets_per_tx,
+        )
+        .await
     }
 }

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use solana_sdk::signature::Signer;
+use solana_sdk::signature::{Signer, Keypair};
 
 mod config;
 mod circuit_breaker;
@@ -14,9 +14,13 @@ mod solana_pda;
 mod solana_simulation;
 mod solana_tx;
 mod worker_pool;
+mod blockchain_client;
+mod settlement_worker;
 
 use config::Config;
 use worker_pool::WorkerPool;
+use blockchain_client::BlockchainClient;
+use settlement_worker::SettlementWorker;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -72,8 +76,9 @@ async fn main() -> Result<()> {
 
     // Load processor keypair
     let processor_keypair = solana_client::load_processor_keypair(&config.processor.keypair_path)?;
+    let processor_keypair_arc = Arc::new(processor_keypair);
     tracing::info!(
-        processor_pubkey = %processor_keypair.pubkey(),
+        processor_pubkey = %processor_keypair_arc.pubkey(),
         "Processor keypair loaded"
     );
 
@@ -81,7 +86,19 @@ async fn main() -> Result<()> {
     let worker_pool = Arc::new(WorkerPool::new(
         config.clone(),
         solana_client.clone(),
-        processor_keypair,
+        Keypair::from_bytes(&processor_keypair_arc.to_bytes()).unwrap(),
+    ));
+
+    // Initialize blockchain client and settlement worker
+    let blockchain_client = Arc::new(BlockchainClient::new(
+        config.blockchain.api_base_url.clone(),
+        config.blockchain.api_key.clone(),
+    ));
+    let settlement_worker = Arc::new(SettlementWorker::new(
+        blockchain_client,
+        solana_client.clone(),
+        processor_keypair_arc,
+        config.clone(),
     ));
 
     // Start metrics server
@@ -91,7 +108,17 @@ async fn main() -> Result<()> {
     let worker_handle = tokio::spawn({
         let worker_pool = worker_pool.clone();
         async move {
+            tracing::info!("WorkerPool starting (Redis-based bet processing)");
             worker_pool.start().await
+        }
+    });
+
+    // Start settlement worker
+    let settlement_handle = tokio::spawn({
+        let settlement_worker = settlement_worker.clone();
+        async move {
+            tracing::info!("SettlementWorker starting (blockchain API settlement processing)");
+            settlement_worker.run().await
         }
     });
 
@@ -104,6 +131,7 @@ async fn main() -> Result<()> {
     // Graceful shutdown
     worker_pool.stop().await;
     worker_handle.abort();
+    settlement_handle.abort();
     metrics_handle.abort();
 
     tracing::info!("Processor stopped");

@@ -1,7 +1,7 @@
 const { PublicKey } = require("@solana/web3.js");
 
-const OLD_PROGRAM = "Cek6v3J44BS6mpoUGjSqTeCUgTViUzpQKkMLcuiZsoxL";
-const NEW_PROGRAM = "HTg6Cs11FNiRXjQ2wFiQodKrVuTQdEJYk8j4RtfX56rP";
+const OLD_PROGRAM = "HTg6Cs11FNiRXjQ2wFiQodKrVuTQdEJYk8j4RtfX56rP";
+const NEW_PROGRAM = "BtZT2B1NkEGZwNT5CS326HbdbXzggiTYSUiYmSDyhTDJ";
 
 // Derive casino PDA for both programs
 const [casinoOld] = PublicKey.findProgramAddressSync(

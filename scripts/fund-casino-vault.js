@@ -12,7 +12,7 @@ const {
 const fs = require("fs");
 
 const PROGRAM_ID = new PublicKey(
-  "HTg6Cs11FNiRXjQ2wFiQodKrVuTQdEJYk8j4RtfX56rP",
+  "BtZT2B1NkEGZwNT5CS326HbdbXzggiTYSUiYmSDyhTDJ",
 );
 const RPC_URL = "https://api.devnet.solana.com";
 

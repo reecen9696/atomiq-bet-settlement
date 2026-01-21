@@ -9,7 +9,7 @@ if [ -z "$NEW_PROGRAM_ID" ]; then
     echo "Usage: ./scripts/update-program-id.sh <NEW_PROGRAM_ID>"
     echo ""
     echo "Example:"
-    echo "  ./scripts/update-program-id.sh HTg6Cs11FNiRXjQ2wFiQodKrVuTQdEJYk8j4RtfX56rP"
+    echo "  ./scripts/update-program-id.sh BtZT2B1NkEGZwNT5CS326HbdbXzggiTYSUiYmSDyhTDJ"
     exit 1
 fi
 

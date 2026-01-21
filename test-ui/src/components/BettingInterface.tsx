@@ -6,11 +6,9 @@ import {
   Loader2,
   TrendingUp,
   TrendingDown,
-  ExternalLink,
   AlertCircle,
 } from "lucide-react";
-import { solanaService } from "../services/solana";
-import type { Bet } from "../types";
+import type { GameResponse } from "../types";
 
 interface BettingInterfaceProps {
   allowanceExists?: boolean | null;
@@ -22,11 +20,14 @@ export function BettingInterface({
   // allowanceRemaining, // TODO: Use for display
 }: BettingInterfaceProps) {
   const { publicKey } = useWallet();
-  const { createBet, isLoading } = useApi();
+  const { playCoinflip, getGameResult, isLoading } = useApi();
   const [amount, setAmount] = useState("0.01");
   const [choice, setChoice] = useState<"heads" | "tails">("heads");
-  const [lastBet, setLastBet] = useState<Bet | null>(null);
+  const [lastResponse, setLastResponse] = useState<GameResponse | null>(null);
   const [error, setError] = useState<string>("");
+
+  const parsedAmount = Number.parseFloat(amount);
+  const displayAmount = Number.isFinite(parsedAmount) ? parsedAmount : 0;
 
   const handlePlaceBet = async () => {
     if (!publicKey) {
@@ -42,30 +43,24 @@ export function BettingInterface({
 
     setError("");
     try {
-      const [vaultAddress, allowancePda] = await Promise.all([
-        solanaService.deriveVaultPDA(publicKey.toBase58()),
-        (async () => {
-          try {
-            const key = `atomik:lastAllowancePda:${publicKey.toBase58()}`;
-            const saved = localStorage.getItem(key);
-            return saved && saved.length > 20 ? saved : "";
-          } catch {
-            return "";
-          }
-        })(),
-      ]);
-
-      const response = await createBet({
-        stake_amount: Math.floor(amountNum * 1_000_000_000), // Convert to lamports
-        stake_token: "SOL",
+      const response = await playCoinflip({
+        player_id: publicKey.toBase58(),
         choice,
-        user_wallet: publicKey.toBase58(),
-        vault_address: vaultAddress,
-        allowance_pda: allowancePda || undefined,
+        token: { symbol: "SOL", mint_address: null },
+        bet_amount: amountNum,
       });
 
-      setLastBet(response.bet);
-      console.log("Bet created:", response.bet);
+      setLastResponse(response);
+
+      // If the game is pending, opportunistically poll once for a completion update.
+      if (response.status === "pending") {
+        try {
+          const next = await getGameResult(response.game_id);
+          setLastResponse(next);
+        } catch {
+          // ignore; the transaction log will show settlement records
+        }
+      }
     } catch (err) {
       const errorMsg =
         err instanceof Error ? err.message : "Failed to place bet";
@@ -162,8 +157,9 @@ export function BettingInterface({
           <div className="p-3 bg-yellow-50 border border-yellow-300 rounded-lg flex items-start">
             <AlertCircle className="w-5 h-5 text-yellow-600 mr-2 flex-shrink-0 mt-0.5" />
             <div className="text-sm text-yellow-800">
-              <strong>No active allowance.</strong> Please approve an allowance
-              in Vault Management before placing bets.
+              <strong>No active allowance.</strong> This UI can still create a
+              blockchain bet, but Solana settlement may fail until an allowance
+              exists.
             </div>
           </div>
         )}
@@ -171,7 +167,7 @@ export function BettingInterface({
         {/* Place Bet Button */}
         <button
           onClick={handlePlaceBet}
-          disabled={isLoading || allowanceExists !== true}
+          disabled={isLoading}
           className="w-full bg-gradient-to-r from-orange-500 to-red-600 text-white px-6 py-4 rounded-lg hover:from-orange-600 hover:to-red-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all duration-200 font-bold text-lg shadow-lg hover:shadow-xl flex items-center justify-center"
         >
           {isLoading ? (
@@ -179,102 +175,68 @@ export function BettingInterface({
               <Loader2 className="w-6 h-6 animate-spin mr-2" />
               Placing Bet...
             </>
-          ) : allowanceExists !== true ? (
-            "Approve Allowance First"
           ) : (
             `Place ${amount} SOL Bet`
           )}
         </button>
 
-        {/* Last Bet Result */}
-        {lastBet && (
+        {/* Last Response */}
+        {lastResponse && (
           <div
             className={`p-4 rounded-lg border-2 ${
-              lastBet.won === true
+              lastResponse.status === "complete"
                 ? "bg-green-50 border-green-300"
-                : lastBet.won === false
-                  ? "bg-red-50 border-red-300"
-                  : "bg-blue-50 border-blue-300"
+                : "bg-blue-50 border-blue-300"
             }`}
           >
             <div className="flex items-start justify-between mb-2">
               <h3 className="font-bold text-gray-800 flex items-center">
-                {lastBet.won === true && (
+                {lastResponse.status === "complete" ? (
                   <TrendingUp className="w-5 h-5 mr-1 text-green-600" />
+                ) : (
+                  <TrendingDown className="w-5 h-5 mr-1 text-blue-600" />
                 )}
-                {lastBet.won === false && (
-                  <TrendingDown className="w-5 h-5 mr-1 text-red-600" />
-                )}
-                Last Bet
+                Last Response
               </h3>
               <span
-                className={`px-2 py-1 rounded text-xs font-bold ${getStatusBadgeClass(lastBet.status)}`}
+                className={`px-2 py-1 rounded text-xs font-bold ${getStatusBadgeClass(lastResponse.status)}`}
               >
-                {lastBet.status}
+                {lastResponse.status}
               </span>
             </div>
 
-            <div className="space-y-2 text-sm">
+            <div className="space-y-2 text-sm text-black">
               <div className="flex justify-between">
-                <span className="text-gray-600">Bet ID:</span>
+                <span className="text-black">Game ID:</span>
                 <code className="text-xs font-mono">
-                  {lastBet.bet_id.slice(0, 8)}...
+                  {lastResponse.game_id}
                 </code>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Amount:</span>
+                <span className="text-black">Amount:</span>
                 <span className="font-semibold">
-                  {(lastBet.stake_amount / 1_000_000_000).toFixed(3)} SOL
+                  {displayAmount.toFixed(3)} SOL
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Choice:</span>
-                <span className="font-semibold uppercase">
-                  {lastBet.choice}
-                </span>
+                <span className="text-black">Choice:</span>
+                <span className="font-semibold uppercase">{choice}</span>
               </div>
-              {lastBet.won !== null && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Result:</span>
-                  <span
-                    className={`font-bold ${lastBet.won ? "text-green-600" : "text-red-600"}`}
-                  >
-                    {lastBet.won ? "WON! 🎉" : "LOST 😔"}
-                  </span>
-                </div>
-              )}
-              {lastBet.payout_amount && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Payout:</span>
-                  <span className="font-semibold text-green-600">
-                    {(lastBet.payout_amount / 1_000_000_000).toFixed(3)} SOL
-                  </span>
-                </div>
-              )}
-              {lastBet.solana_tx_id && (
-                <div className="pt-2 border-t border-gray-300">
-                  <p className="text-xs text-gray-600 mb-1">Transaction ID:</p>
-                  <div className="flex items-center justify-between bg-white p-2 rounded">
-                    <code className="text-xs font-mono truncate mr-2">
-                      {lastBet.solana_tx_id}
-                    </code>
-                    <a
-                      href={solanaService.getExplorerUrl(lastBet.solana_tx_id)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-800 flex-shrink-0"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
+              {lastResponse.status === "complete" && (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-black">Outcome:</span>
+                    <span className="font-semibold uppercase">
+                      {lastResponse.result.outcome}
+                    </span>
                   </div>
-                </div>
-              )}
-              {lastBet.last_error_message && (
-                <div className="pt-2 border-t border-red-200">
-                  <p className="text-xs text-red-600">
-                    Error: {lastBet.last_error_message}
-                  </p>
-                </div>
+                  <div className="pt-2 border-t border-gray-300">
+                    <p className="text-xs text-black mb-1">VRF Output:</p>
+                    <code className="text-xs font-mono break-all text-black">
+                      {lastResponse.result.vrf.vrf_output}
+                    </code>
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -287,18 +249,10 @@ export function BettingInterface({
 function getStatusBadgeClass(status: string): string {
   const normalized = status.toLowerCase();
   switch (normalized) {
-    case "completed":
+    case "complete":
       return "bg-green-100 text-green-800";
     case "pending":
-      return "bg-yellow-100 text-yellow-800";
-    case "batched":
-    case "submitted_to_solana":
-    case "confirmed_on_solana":
       return "bg-blue-100 text-blue-800";
-    case "failed_retryable":
-      return "bg-orange-100 text-orange-800";
-    case "failed_manual_review":
-      return "bg-red-100 text-red-800";
     default:
       return "bg-gray-100 text-gray-800";
   }

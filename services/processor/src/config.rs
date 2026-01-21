@@ -5,7 +5,7 @@ use std::env;
 pub struct Config {
     pub processor: ProcessorConfig,
     pub solana: SolanaConfig,
-    pub backend: BackendConfig,
+    pub blockchain: BlockchainConfig,
     pub metrics_port: u16,
 }
 
@@ -21,15 +21,18 @@ pub struct ProcessorConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct BackendConfig {
-    pub api_base_url: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
 pub struct SolanaConfig {
     pub rpc_urls: Vec<String>,
     pub commitment: String,
     pub vault_program_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BlockchainConfig {
+    pub api_base_url: String,
+    pub api_key: String,
+    pub poll_interval_seconds: u64,
+    pub settlement_batch_size: usize,
 }
 
 impl Config {
@@ -69,9 +72,17 @@ impl Config {
                 vault_program_id: env::var("VAULT_PROGRAM_ID")
                     .expect("VAULT_PROGRAM_ID must be set"),
             },
-            backend: BackendConfig {
-                api_base_url: env::var("BACKEND_API_URL")
-                    .unwrap_or_else(|_| "http://localhost:3001".to_string()),
+            blockchain: BlockchainConfig {
+                api_base_url: env::var("BLOCKCHAIN_API_URL")
+                    .expect("BLOCKCHAIN_API_URL must be set"),
+                api_key: env::var("BLOCKCHAIN_API_KEY")
+                    .expect("BLOCKCHAIN_API_KEY must be set"),
+                poll_interval_seconds: env::var("BLOCKCHAIN_POLL_INTERVAL_SECONDS")
+                    .unwrap_or_else(|_| "10".to_string())
+                    .parse()?,
+                settlement_batch_size: env::var("BLOCKCHAIN_SETTLEMENT_BATCH_SIZE")
+                    .unwrap_or_else(|_| "50".to_string())
+                    .parse()?,
             },
             metrics_port: env::var("PROCESSOR_METRICS_PORT")
                 .unwrap_or_else(|_| "9091".to_string())
@@ -79,3 +90,4 @@ impl Config {
         })
     }
 }
+
