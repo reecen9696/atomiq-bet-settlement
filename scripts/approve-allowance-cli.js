@@ -21,7 +21,7 @@ const RPC_URL =
   process.env.VITE_SOLANA_RPC_URL || "https://api.devnet.solana.com";
 const PROGRAM_ID = new PublicKey(
   process.env.VITE_VAULT_PROGRAM_ID ||
-    "HTg6Cs11FNiRXjQ2wFiQodKrVuTQdEJYk8j4RtfX56rP",
+    "BtZT2B1NkEGZwNT5CS326HbdbXzggiTYSUiYmSDyhTDJ",
 );
 const MEMO_PROGRAM_ID = new PublicKey(
   "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",

@@ -136,7 +136,7 @@ function AppContent() {
           </ol>
           <div className="mt-4 pt-4 border-t border-gray-200">
             <p className="text-xs text-gray-500">
-              <strong>Backend API:</strong>{" "}
+              <strong>Blockchain API:</strong>{" "}
               {import.meta.env.VITE_API_BASE_URL || "http://localhost:3001"}
               <br />
               <strong>Program ID:</strong>{" "}

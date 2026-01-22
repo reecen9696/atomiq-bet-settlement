@@ -5,8 +5,8 @@ echo "🔍 COMPREHENSIVE PROGRAM ID VERIFICATION"
 echo "============================================"
 echo ""
 
-NEW_PROGRAM="HTg6Cs11FNiRXjQ2wFiQodKrVuTQdEJYk8j4RtfX56rP"
-OLD_PROGRAM="Cek6v3J44BS6mpoUGjSqTeCUgTViUzpQKkMLcuiZsoxL"
+NEW_PROGRAM="BtZT2B1NkEGZwNT5CS326HbdbXzggiTYSUiYmSDyhTDJ"
+OLD_PROGRAM="HTg6Cs11FNiRXjQ2wFiQodKrVuTQdEJYk8j4RtfX56rP"
 
 echo "Expected (NEW): $NEW_PROGRAM"
 echo "Old (deprecated): $OLD_PROGRAM"

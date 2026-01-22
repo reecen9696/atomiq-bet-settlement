@@ -32,7 +32,6 @@ impl Worker {
         processor_keypair: Arc<Keypair>,
     ) -> Self {
         let http = Client::new();
-        let backend_base_url = config.backend.api_base_url.trim_end_matches('/').to_string();
         let circuit_breaker = Arc::new(CircuitBreaker::new(5, 60));
         let retry_strategy = RetryStrategy::new(config.processor.max_retries);
 
@@ -40,7 +39,6 @@ impl Worker {
             solana_client,
             processor_keypair,
             http,
-            backend_base_url,
             retry_strategy,
             circuit_breaker,
             config,

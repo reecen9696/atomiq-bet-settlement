@@ -1,6 +1,14 @@
-import type { Bet, CreateBetRequest, CreateBetResponse } from '../types';
+import type {
+  CoinFlipPlayRequest,
+  GameResponse,
+  PendingSettlementsResponse,
+  RecentGamesResponse,
+  SettlementGameDetail,
+} from "../types";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
+const SETTLEMENT_API_KEY = import.meta.env.VITE_SETTLEMENT_API_KEY;
 
 export class ApiService {
   private baseUrl: string;
@@ -9,62 +17,104 @@ export class ApiService {
     this.baseUrl = baseUrl;
   }
 
-  async createBet(request: CreateBetRequest): Promise<CreateBetResponse> {
-    const response = await fetch(`${this.baseUrl}/api/bets`, {
-      method: 'POST',
+  private async parseError(response: Response): Promise<string> {
+    try {
+      const data: unknown = await response.json();
+      if (data && typeof data === "object") {
+        const maybeMessage = (data as any).error || (data as any).message;
+        if (typeof maybeMessage === "string" && maybeMessage.length > 0)
+          return maybeMessage;
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      const text = await response.text();
+      if (text.trim().length > 0) return text;
+    } catch {
+      // ignore
+    }
+
+    return `Request failed (${response.status})`;
+  }
+
+  async playCoinflip(request: CoinFlipPlayRequest): Promise<GameResponse> {
+    const response = await fetch(`${this.baseUrl}/api/coinflip/play`, {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(request),
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to create bet');
+      throw new Error(await this.parseError(response));
     }
 
     return response.json();
   }
 
-  async getPendingBets(): Promise<Bet[]> {
-    // NOTE: This endpoint is intended for the processor (it also claims bets).
-    // Keep it only for debugging and normalize the response shape.
-    const response = await fetch(`${this.baseUrl}/api/external/bets/pending?limit=50&processor_id=test-ui`);
+  async getPendingSettlements(params?: {
+    limit?: number;
+    cursor?: string;
+  }): Promise<PendingSettlementsResponse> {
+    const url = new URL(`${this.baseUrl}/api/settlement/pending`);
+    url.searchParams.set("limit", String(params?.limit ?? 50));
+    if (params?.cursor) url.searchParams.set("cursor", params.cursor);
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        ...(SETTLEMENT_API_KEY ? { "X-API-Key": SETTLEMENT_API_KEY } : {}),
+      },
+    });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch pending bets');
+      throw new Error(await this.parseError(response));
     }
 
-    const data: unknown = await response.json();
-    if (Array.isArray(data)) return data as Bet[];
-    if (data && typeof data === 'object' && Array.isArray((data as any).bets)) return (data as any).bets as Bet[];
-    return [];
+    return response.json();
   }
 
-  async listUserBets(userWallet: string): Promise<Bet[]> {
-    const url = new URL(`${this.baseUrl}/api/bets`);
-    url.searchParams.set('user_wallet', userWallet);
-    url.searchParams.set('limit', '50');
+  async getGameResult(gameId: string): Promise<GameResponse> {
+    const response = await fetch(
+      `${this.baseUrl}/api/game/${encodeURIComponent(gameId)}`,
+    );
+    if (!response.ok) throw new Error(await this.parseError(response));
+    return response.json();
+  }
+
+  async getSettlementGame(txId: number): Promise<SettlementGameDetail> {
+    const response = await fetch(
+      `${this.baseUrl}/api/settlement/games/${txId}`,
+      {
+        headers: {
+          ...(SETTLEMENT_API_KEY ? { "X-API-Key": SETTLEMENT_API_KEY } : {}),
+        },
+      },
+    );
+    if (!response.ok) throw new Error(await this.parseError(response));
+    return response.json();
+  }
+
+  async getRecentGames(params?: {
+    limit?: number;
+    cursor?: string;
+  }): Promise<RecentGamesResponse> {
+    const url = new URL(`${this.baseUrl}/api/games/recent`);
+    url.searchParams.set("limit", String(params?.limit ?? 50));
+    if (params?.cursor) url.searchParams.set("cursor", params.cursor);
 
     const response = await fetch(url.toString());
-    if (!response.ok) {
-      throw new Error('Failed to fetch user bets');
-    }
-
-    const data: unknown = await response.json();
-    return Array.isArray(data) ? (data as Bet[]) : [];
-  }
-
-  async getAllBets(): Promise<Bet[]> {
-    // Deprecated: in this POC, use listUserBets(userWallet)
-    return this.getPendingBets();
+    if (!response.ok) throw new Error(await this.parseError(response));
+    return response.json();
   }
 
   async healthCheck(): Promise<{ status: string; timestamp: string }> {
     const response = await fetch(`${this.baseUrl}/health`);
-    
+
     if (!response.ok) {
-      throw new Error('Health check failed');
+      throw new Error("Health check failed");
     }
 
     return response.json();
