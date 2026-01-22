@@ -7,7 +7,7 @@ import type {
 } from "../types";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:3001";
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
 const SETTLEMENT_API_KEY = import.meta.env.VITE_SETTLEMENT_API_KEY;
 
 export class ApiService {

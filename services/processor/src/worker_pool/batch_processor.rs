@@ -101,6 +101,8 @@ impl BatchProcessor {
                                 Some(signature.clone()),
                                 None, // No error on success
                                 settlement.version,
+                                None, // No retry on success
+                                None, // No retry_after on success
                             )
                             .await
                         {
@@ -154,13 +156,30 @@ impl BatchProcessor {
                     // Update all settlements in this chunk as failed
                     for settlement in chunk {
                         let error_msg = format!("Solana transaction failed: {}", e);
+                        
+                        // Calculate retry logic: max 3 retries with 5s, 10s, 15s backoff
+                        let new_retry_count = settlement.retry_count + 1;
+                        let (status, next_retry_after) = if new_retry_count >= 3 {
+                            ("SettlementFailedPermanent", None)
+                        } else {
+                            let backoff_seconds = (new_retry_count as i64) * 5;
+                            let now_ms = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis() as i64;
+                            let retry_after = now_ms + (backoff_seconds * 1000);
+                            ("SettlementFailed", Some(retry_after))
+                        };
+                        
                         match blockchain_client
                             .update_settlement_status(
                                 settlement.transaction_id,
-                                "SettlementFailed",
+                                status,
                                 None,
                                 Some(error_msg.clone()),
                                 settlement.version,
+                                Some(new_retry_count),
+                                next_retry_after,
                             )
                             .await
                         {

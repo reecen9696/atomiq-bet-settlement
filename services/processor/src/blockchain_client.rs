@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use tracing::{debug, warn};
+use tracing::{debug, warn, info};
 
 const DEFAULT_TIMEOUT_SECS: u64 = 10;
 const MAX_RETRIES: u32 = 3;
@@ -37,6 +37,11 @@ pub struct GameSettlementInfo {
     pub vrf_output: String,
     pub block_height: u64,
     pub version: u64,
+    pub solana_tx_id: Option<String>, // For idempotency check - if already settled
+    #[serde(default)]
+    pub retry_count: u32,
+    #[serde(default)]
+    pub next_retry_after: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -45,6 +50,10 @@ pub struct UpdateSettlementRequest {
     pub solana_tx_id: Option<String>,
     pub error_message: Option<String>,
     pub expected_version: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_retry_after: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -102,6 +111,8 @@ impl BlockchainClient {
     }
 
     async fn fetch_pending_settlements_once(&self, url: &str, limit: usize) -> Result<Vec<GameSettlementInfo>> {
+        info!("Fetching pending settlements from {} with limit={}", url, limit);
+        
         let response = self.http_client
             .get(url)
             .header("X-API-Key", &self.api_key)
@@ -121,6 +132,7 @@ impl BlockchainClient {
             .await
             .context("Failed to parse response")?;
 
+        info!("Received {} pending settlements from API", data.games.len());
         Ok(data.games)
     }
 
@@ -132,6 +144,8 @@ impl BlockchainClient {
         solana_tx_id: Option<String>,
         error_message: Option<String>,
         expected_version: u64,
+        retry_count: Option<u32>,
+        next_retry_after: Option<i64>,
     ) -> Result<u64> {
         let url = format!("{}/api/settlement/games/{}", self.base_url, tx_id);
         
@@ -140,6 +154,8 @@ impl BlockchainClient {
             solana_tx_id,
             error_message,
             expected_version,
+            retry_count,
+            next_retry_after,
         };
 
         for attempt in 1..=MAX_RETRIES {

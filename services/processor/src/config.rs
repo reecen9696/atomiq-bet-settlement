@@ -12,12 +12,17 @@ pub struct Config {
 #[derive(Debug, Clone, Deserialize)]
 pub struct ProcessorConfig {
     pub worker_count: usize,
+    pub settlement_worker_count: usize,
     pub batch_interval_seconds: u64,
     pub batch_size: usize,
     pub max_bets_per_tx: usize,
     pub max_retries: u32,
     pub keypair_path: String,
     pub max_stuck_time_seconds: i64,
+    pub coordinator_enabled: bool,
+    pub coordinator_channel_buffer_size: usize,
+    pub coordinator_batch_min_size: usize,
+    pub coordinator_batch_max_size: usize,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -47,6 +52,9 @@ impl Config {
                 worker_count: env::var("PROCESSOR_WORKER_COUNT")
                     .unwrap_or_else(|_| "10".to_string())
                     .parse()?,
+                settlement_worker_count: env::var("SETTLEMENT_WORKER_COUNT")
+                    .unwrap_or_else(|_| "4".to_string())
+                    .parse()?,
                 batch_interval_seconds: env::var("PROCESSOR_BATCH_INTERVAL_SECONDS")
                     .unwrap_or_else(|_| "30".to_string())
                     .parse()?,
@@ -63,6 +71,18 @@ impl Config {
                     .expect("PROCESSOR_KEYPAIR must be set"),
                 max_stuck_time_seconds: env::var("PROCESSOR_MAX_STUCK_TIME_SECONDS")
                     .unwrap_or_else(|_| "120".to_string())
+                    .parse()?,
+                coordinator_enabled: env::var("COORDINATOR_ENABLED")
+                    .unwrap_or_else(|_| "true".to_string())
+                    .parse()?,
+                coordinator_channel_buffer_size: env::var("COORDINATOR_CHANNEL_BUFFER_SIZE")
+                    .unwrap_or_else(|_| "100".to_string())
+                    .parse()?,
+                coordinator_batch_min_size: env::var("COORDINATOR_BATCH_MIN_SIZE")
+                    .unwrap_or_else(|_| "3".to_string())
+                    .parse()?,
+                coordinator_batch_max_size: env::var("COORDINATOR_BATCH_MAX_SIZE")
+                    .unwrap_or_else(|_| "12".to_string())
                     .parse()?,
             },
             solana: SolanaConfig {
