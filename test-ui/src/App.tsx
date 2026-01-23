@@ -16,6 +16,7 @@ import { WalletConnect } from "./components/WalletConnect";
 import { VaultManager } from "./components/VaultManager";
 import { BettingInterface } from "./components/BettingInterface";
 import { TransactionLog } from "./components/TransactionLog";
+import { LiveCasinoDashboard } from "./components/LiveCasinoDashboard";
 import { solanaService } from "./services/solana";
 import { useConnection } from "@solana/wallet-adapter-react";
 
@@ -86,6 +87,11 @@ function AppContent() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-8">
+        {/* Live Casino Dashboard - Full Width at Top */}
+        <div className="mb-8">
+          <LiveCasinoDashboard />
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           {/* Left Column */}
           <div className="space-y-6">
