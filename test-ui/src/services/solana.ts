@@ -24,6 +24,7 @@ import {
   waitForConfirmation,
 } from "./solana/utils";
 import { PDADerivation } from "./solana/pda";
+import { createMemoInstruction, MemoMessages } from "../sdk/utils/memo";
 import type {
   VaultAccountState,
   CasinoAccountState,
@@ -744,7 +745,11 @@ export class SolanaService {
       data,
     });
 
-    const tx = new Transaction().add(ix);
+    // Add descriptive memo instruction first (so it's prominent in wallet)
+    const amountSol = Number(params.amountLamports) / 1e9;
+    const memoInstruction = createMemoInstruction(MemoMessages.depositSol(amountSol));
+    
+    const tx = new Transaction().add(memoInstruction).add(ix);
     addPriorityFeeInstructions(tx, 15000);
     tx.feePayer = params.user;
     const signature = params.signTransaction
@@ -783,7 +788,11 @@ export class SolanaService {
       data,
     });
 
-    const tx = new Transaction().add(ix);
+    // Add descriptive memo instruction first (so it's prominent in wallet)
+    const amountSol = Number(params.amountLamports) / 1e9;
+    const memoInstruction = createMemoInstruction(MemoMessages.withdrawSol(amountSol));
+    
+    const tx = new Transaction().add(memoInstruction).add(ix);
     addPriorityFeeInstructions(tx, 15000);
     tx.feePayer = params.user;
     const signature = params.signTransaction
