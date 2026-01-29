@@ -747,8 +747,10 @@ export class SolanaService {
 
     // Add descriptive memo instruction first (so it's prominent in wallet)
     const amountSol = Number(params.amountLamports) / 1e9;
-    const memoInstruction = createMemoInstruction(MemoMessages.depositSol(amountSol));
-    
+    const memoInstruction = createMemoInstruction(
+      MemoMessages.depositSol(amountSol),
+    );
+
     const tx = new Transaction().add(memoInstruction).add(ix);
     addPriorityFeeInstructions(tx, 15000);
     tx.feePayer = params.user;
@@ -790,8 +792,10 @@ export class SolanaService {
 
     // Add descriptive memo instruction first (so it's prominent in wallet)
     const amountSol = Number(params.amountLamports) / 1e9;
-    const memoInstruction = createMemoInstruction(MemoMessages.withdrawSol(amountSol));
-    
+    const memoInstruction = createMemoInstruction(
+      MemoMessages.withdrawSol(amountSol),
+    );
+
     const tx = new Transaction().add(memoInstruction).add(ix);
     addPriorityFeeInstructions(tx, 15000);
     tx.feePayer = params.user;

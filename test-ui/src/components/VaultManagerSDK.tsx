@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { 
-  AtomikConfig, 
-  createVaultService
+import {
+  AtomikConfig,
+  createVaultService,
+  getBlockchainConfig,
 } from "../sdk/index";
 import { MemoMessages } from "../sdk/utils/memo";
 import { Loader2, ExternalLink } from "lucide-react";
@@ -42,7 +43,9 @@ export function VaultManagerSDK({
       // This would implement the full initialization logic
       // When implemented, the user will see this message in their wallet:
       const message = MemoMessages.initializeVault();
-      alert(`Transaction will show: "${message}"\n\nFeature placeholder - not yet implemented`);
+      alert(
+        `Transaction will show: "${message}"\n\nFeature placeholder - not yet implemented`,
+      );
     } catch (error: any) {
       alert(`Error: ${error.message}`);
     } finally {
@@ -61,7 +64,9 @@ export function VaultManagerSDK({
       // This would implement the full deposit logic
       // When implemented, the user will see this message in their wallet:
       const message = MemoMessages.depositSol(amount);
-      alert(`Transaction will show: "${message}"\n\nFeature placeholder - not yet implemented`);
+      alert(
+        `Transaction will show: "${message}"\n\nFeature placeholder - not yet implemented`,
+      );
       setDepositAmount("");
     } catch (error: any) {
       alert(`Error: ${error.message}`);
@@ -81,7 +86,9 @@ export function VaultManagerSDK({
       // This would implement the full withdraw logic
       // When implemented, the user will see this message in their wallet:
       const message = MemoMessages.withdrawSol(amount);
-      alert(`Transaction will show: "${message}"\n\nFeature placeholder - not yet implemented`);
+      alert(
+        `Transaction will show: "${message}"\n\nFeature placeholder - not yet implemented`,
+      );
       setWithdrawAmount("");
     } catch (error: any) {
       alert(`Error: ${error.message}`);
@@ -99,7 +106,9 @@ export function VaultManagerSDK({
       // so it won't show a memo in the wallet. The memo system
       // is for user-initiated transactions that need approval.
       const signature = await vaultService.requestAirdrop(userPublicKey);
-      alert(`Airdrop requested! Signature: ${signature}\n\nNote: Airdrops don't show memos since they're system calls`);
+      alert(
+        `Airdrop requested! Signature: ${signature}\n\nNote: Airdrops don't show memos since they're system calls`,
+      );
     } catch (error: any) {
       alert(`Error: ${error.message}`);
     } finally {
@@ -118,7 +127,9 @@ export function VaultManagerSDK({
       // This would implement the full betting logic
       // When implemented, the user will see this message in their wallet:
       const message = MemoMessages.placeBet(betChoice, amount);
-      alert(`Transaction will show: "${message}"\n\nFeature placeholder - not yet implemented`);
+      alert(
+        `Transaction will show: "${message}"\n\nFeature placeholder - not yet implemented`,
+      );
       setBetAmount("");
     } catch (error: any) {
       alert(`Error: ${error.message}`);
@@ -135,7 +146,9 @@ export function VaultManagerSDK({
       // This would implement the allowance approval logic
       // When implemented, the user will see this message in their wallet:
       const message = MemoMessages.approveAllowance(1.0); // Example: approve 1 SOL
-      alert(`Transaction will show: "${message}"\n\nFeature placeholder - not yet implemented`);
+      alert(
+        `Transaction will show: "${message}"\n\nFeature placeholder - not yet implemented`,
+      );
     } catch (error: any) {
       alert(`Error: ${error.message}`);
     } finally {
@@ -144,11 +157,12 @@ export function VaultManagerSDK({
   };
 
   const getExplorerUrl = (address: string) => {
+    const blockchainConfig = getBlockchainConfig(config);
     const base =
-      config.solana.network === "devnet"
+      blockchainConfig.network === "devnet"
         ? "https://explorer.solana.com/address"
         : "https://explorer.solana.com/address";
-    return `${base}/${address}${config.solana.network === "devnet" ? "?cluster=devnet" : ""}`;
+    return `${base}/${address}${blockchainConfig.network === "devnet" ? "?cluster=devnet" : ""}`;
   };
 
   if (!userPublicKey) {
@@ -286,9 +300,11 @@ export function VaultManagerSDK({
         {/* Betting Section */}
         <div className="border-t pt-4">
           <h3 className="text-lg font-medium mb-3">Betting Demo</h3>
-          
+
           <div className="space-y-2 mb-3">
-            <label className="block text-sm font-medium">Approve Session Key (one-time)</label>
+            <label className="block text-sm font-medium">
+              Approve Session Key (one-time)
+            </label>
             <button
               onClick={handleApproveAllowance}
               disabled={loading}
@@ -298,16 +314,21 @@ export function VaultManagerSDK({
               Approve Session Key (1 SOL)
             </button>
             <p className="text-xs text-gray-600">
-              Session keys allow faster betting without wallet approval for each bet
+              Session keys allow faster betting without wallet approval for each
+              bet
             </p>
           </div>
 
           <div className="space-y-2">
-            <label className="block text-sm font-medium">Place Coinflip Bet</label>
+            <label className="block text-sm font-medium">
+              Place Coinflip Bet
+            </label>
             <div className="flex gap-2 mb-2">
-              <select 
-                value={betChoice} 
-                onChange={(e) => setBetChoice(e.target.value as "heads" | "tails")}
+              <select
+                value={betChoice}
+                onChange={(e) =>
+                  setBetChoice(e.target.value as "heads" | "tails")
+                }
                 className="border rounded px-3 py-2"
               >
                 <option value="heads">Heads</option>
@@ -334,7 +355,7 @@ export function VaultManagerSDK({
           </div>
         </div>
 
-        {config.solana.network === "devnet" && (
+        {getBlockchainConfig(config).network === "devnet" && (
           <button
             onClick={handleAirdrop}
             disabled={loading}

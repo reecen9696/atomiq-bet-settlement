@@ -1,8 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import type {
-  AtomikWebSocketManager,
-  WebSocketConnection,
-} from "../index";
+import type { AtomikWebSocketManager, WebSocketConnection } from "../index";
 
 export interface CasinoStats {
   totalGames: number;

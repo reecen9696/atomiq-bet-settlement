@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import type {
-  AtomikVaultService,
-} from "../index";
+import type { AtomikVaultService } from "../index";
 import type { VaultAccountState } from "../../services/solana/types";
 
 export interface UseVaultState {

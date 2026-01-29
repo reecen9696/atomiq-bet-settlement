@@ -1,5 +1,10 @@
 import { Connection, PublicKey } from "@solana/web3.js";
-import type { AtomikConfig } from "../env";
+import type {
+  AtomikConfig,
+  AtomikSolanaConfig,
+  BlockchainConfig,
+} from "../env";
+import { getBlockchainConfig } from "../env";
 import { PDADerivation } from "../../services/solana/pda";
 import {
   parseAllowanceAccount,
@@ -64,14 +69,16 @@ export interface AllowanceOperations {
  */
 export class AtomikAllowanceService implements AllowanceOperations {
   private connection: Connection;
+  private blockchainConfig: BlockchainConfig;
   private pda: PDADerivation;
   private vaultProgramId: PublicKey;
 
-  constructor(config: AtomikConfig) {
-    this.connection = new Connection(config.solana.rpcUrl, {
-      commitment: config.solana.commitment,
+  constructor(config: AtomikConfig | AtomikSolanaConfig) {
+    this.blockchainConfig = getBlockchainConfig(config);
+    this.connection = new Connection(this.blockchainConfig.rpcUrl, {
+      commitment: this.blockchainConfig.commitment,
     });
-    this.vaultProgramId = new PublicKey(config.solana.programId);
+    this.vaultProgramId = new PublicKey(this.blockchainConfig.programId);
     this.pda = new PDADerivation(this.vaultProgramId);
   }
 
@@ -279,9 +286,10 @@ export class AtomikAllowanceService implements AllowanceOperations {
 
 /**
  * Factory function to create an allowance service
+ * Supports both new generic config and legacy Solana config
  */
 export function createAllowanceService(
-  config: AtomikConfig,
+  config: AtomikConfig | AtomikSolanaConfig,
 ): AtomikAllowanceService {
   return new AtomikAllowanceService(config);
 }

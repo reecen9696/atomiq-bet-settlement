@@ -1,4 +1,5 @@
-import type { AtomikConfig } from "../env";
+import type { AtomikConfig, AtomikSolanaConfig, ApiConfig } from "../env";
+import { getApiConfig } from "../env";
 
 export interface ApiResponse<T = unknown> {
   success: boolean;
@@ -52,18 +53,23 @@ export interface PaginatedGames {
  * Enhanced API client with retry logic and proper error handling
  */
 export class AtomikApiClient {
-  private config: AtomikConfig["api"];
+  private apiConfig: ApiConfig;
   private baseHeaders: Record<string, string>;
 
-  constructor(config: AtomikConfig) {
-    this.config = config.api;
+  constructor(config: AtomikConfig | AtomikSolanaConfig) {
+    this.apiConfig = getApiConfig(config);
     this.baseHeaders = {
       "Content-Type": "application/json",
     };
 
-    if (this.config.settlementApiKey) {
-      this.baseHeaders["Authorization"] =
-        `Bearer ${this.config.settlementApiKey}`;
+    // Handle both new and legacy API key fields
+    const apiKey =
+      this.apiConfig.apiKey ||
+      ("settlementApiKey" in this.apiConfig
+        ? this.apiConfig.settlementApiKey
+        : undefined);
+    if (apiKey) {
+      this.baseHeaders["Authorization"] = `Bearer ${apiKey}`;
     }
   }
 
@@ -79,10 +85,10 @@ export class AtomikApiClient {
       const controller = new AbortController();
       const timeoutId = setTimeout(
         () => controller.abort(),
-        this.config.timeout,
+        this.apiConfig.timeout,
       );
 
-      const response = await fetch(`${this.config.baseUrl}${endpoint}`, {
+      const response = await fetch(`${this.apiConfig.baseUrl}${endpoint}`, {
         ...options,
         headers: { ...this.baseHeaders, ...options.headers },
         signal: controller.signal,
@@ -104,7 +110,7 @@ export class AtomikApiClient {
         message: data.message,
       };
     } catch (error) {
-      const isLastAttempt = attempt >= this.config.retryAttempts;
+      const isLastAttempt = attempt >= this.apiConfig.retryAttempts;
 
       if (!isLastAttempt && !(error as Error)?.name?.includes("AbortError")) {
         // Wait before retry (exponential backoff)
@@ -175,13 +181,15 @@ export class AtomikApiClient {
    * Get WebSocket URL for real-time updates
    */
   getWebSocketUrl(): string {
-    return this.config.baseUrl.replace(/^http/, "ws");
+    return this.apiConfig.baseUrl.replace(/^http/, "ws");
   }
 }
 
 /**
  * Factory function to create an API client from config
  */
-export function createApiClient(config: AtomikConfig): AtomikApiClient {
+export function createApiClient(
+  config: AtomikConfig | AtomikSolanaConfig,
+): AtomikApiClient {
   return new AtomikApiClient(config);
 }

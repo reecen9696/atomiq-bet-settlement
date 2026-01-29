@@ -4,7 +4,7 @@ export {
   type UseVaultState,
   type UseVaultActions,
   type UseVaultResult,
-} from './useVault';
+} from "./useVault";
 
 export {
   useAllowance,
@@ -12,7 +12,7 @@ export {
   type UseAllowanceState,
   type UseAllowanceActions,
   type UseAllowanceResult,
-} from './useAllowance';
+} from "./useAllowance";
 
 export {
   useBetting,
@@ -20,7 +20,7 @@ export {
   type UseBettingState,
   type UseBettingActions,
   type UseBettingResult,
-} from './useBetting';
+} from "./useBetting";
 
 export {
   useWebSocket,
@@ -31,19 +31,19 @@ export {
   type CasinoStats,
   type RecentWin,
   type BlockUpdate,
-} from './useWebSocket';
+} from "./useWebSocket";
 
 /**
  * Combined hook that provides all Atomik SDK functionality
  * Use this for full-featured applications that need all services
  */
-import { useMemo } from 'react';
-import type { AtomikConfig } from '../index';
-import { createAtomikSDK } from '../index';
-import { useVault } from './useVault';
-import { useAllowance } from './useAllowance';
-import { useBetting } from './useBetting';
-import { useWebSocket } from './useWebSocket';
+import { useMemo } from "react";
+import type { AtomikConfig } from "../index";
+import { createAtomikSDK } from "../index";
+import { useVault } from "./useVault";
+import { useAllowance } from "./useAllowance";
+import { useBetting } from "./useBetting";
+import { useWebSocket } from "./useWebSocket";
 
 export interface UseAtomikSDKOptions {
   config?: Partial<AtomikConfig>;
@@ -66,21 +66,31 @@ export function useAtomikSDK(options: UseAtomikSDKOptions = {}) {
   const sdk = useMemo(() => createAtomikSDK(config), [config]);
 
   // Individual service hooks
-  const vault = useVault(userPublicKey ?? null, sdk.vault, sendTransaction, signTransaction);
-  const allowance = useAllowance(userPublicKey ?? null, sdk.allowance, sendTransaction, signTransaction);
+  const vault = useVault(
+    userPublicKey ?? null,
+    sdk.vault,
+    sendTransaction,
+    signTransaction,
+  );
+  const allowance = useAllowance(
+    userPublicKey ?? null,
+    sdk.allowance,
+    sendTransaction,
+    signTransaction,
+  );
   const betting = useBetting(userPublicKey ?? null, sdk.betting);
   const websocket = useWebSocket(sdk.websocket, autoConnectWebSocket);
 
   return {
     // SDK services
     sdk,
-    
+
     // Individual hooks with state management
     vault,
     allowance,
     betting,
     websocket,
-    
+
     // Quick access to raw services (for advanced use cases)
     services: {
       api: sdk.api,

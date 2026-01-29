@@ -5,11 +5,11 @@
 
 import {
   Connection,
-  PublicKey, 
+  PublicKey,
   Transaction,
   SystemProgram,
-} from '@solana/web3.js';
-import { createMemoInstruction, MemoMessages } from '../utils/memo';
+} from "@solana/web3.js";
+import { createMemoInstruction, MemoMessages } from "../utils/memo";
 
 /**
  * Example: Building a deposit transaction with memo instruction
@@ -22,14 +22,16 @@ export async function buildDepositTransactionWithMemo(params: {
   connection: Connection;
 }): Promise<Transaction> {
   const { userPublicKey, vaultPda, amount, connection } = params;
-  
+
   // Create a new transaction
   const transaction = new Transaction();
-  
+
   // 1. Add memo instruction FIRST (so it's prominent in wallet UI)
-  const memoInstruction = createMemoInstruction(MemoMessages.depositSol(amount));
+  const memoInstruction = createMemoInstruction(
+    MemoMessages.depositSol(amount),
+  );
   transaction.add(memoInstruction);
-  
+
   // 2. Add the actual program instruction(s) after memo
   const depositInstruction = SystemProgram.transfer({
     fromPubkey: userPublicKey,
@@ -37,12 +39,12 @@ export async function buildDepositTransactionWithMemo(params: {
     lamports: amount * 1e9, // Convert SOL to lamports
   });
   transaction.add(depositInstruction);
-  
+
   // 3. Set recent blockhash and fee payer
   const { blockhash } = await connection.getLatestBlockhash();
   transaction.recentBlockhash = blockhash;
   transaction.feePayer = userPublicKey;
-  
+
   return transaction;
 }
 
@@ -51,18 +53,20 @@ export async function buildDepositTransactionWithMemo(params: {
  */
 export async function buildBettingTransactionWithMemo(params: {
   userPublicKey: PublicKey;
-  choice: 'heads' | 'tails';
+  choice: "heads" | "tails";
   amount: number;
   connection: Connection;
 }): Promise<Transaction> {
   const { userPublicKey, choice, amount, connection } = params;
-  
+
   const transaction = new Transaction();
-  
+
   // 1. Add memo instruction FIRST
-  const memoInstruction = createMemoInstruction(MemoMessages.placeBet(choice, amount));
+  const memoInstruction = createMemoInstruction(
+    MemoMessages.placeBet(choice, amount),
+  );
   transaction.add(memoInstruction);
-  
+
   // 2. Add betting program instruction
   // (This would be your actual program instruction for placing bets)
   // const bettingInstruction = new TransactionInstruction({
@@ -71,12 +75,12 @@ export async function buildBettingTransactionWithMemo(params: {
   //   data: Buffer.from([...]) // Instruction data
   // });
   // transaction.add(bettingInstruction);
-  
+
   // Set transaction properties
   const { blockhash } = await connection.getLatestBlockhash();
   transaction.recentBlockhash = blockhash;
   transaction.feePayer = userPublicKey;
-  
+
   return transaction;
 }
 
@@ -90,13 +94,15 @@ export async function buildApproveAllowanceTransactionWithMemo(params: {
   connection: Connection;
 }): Promise<Transaction> {
   const { userPublicKey, amount, expiryDate, connection } = params;
-  
+
   const transaction = new Transaction();
-  
+
   // 1. Add memo instruction FIRST
-  const memoInstruction = createMemoInstruction(MemoMessages.approveAllowance(amount, expiryDate));
+  const memoInstruction = createMemoInstruction(
+    MemoMessages.approveAllowance(amount, expiryDate),
+  );
   transaction.add(memoInstruction);
-  
+
   // 2. Add allowance approval instruction
   // (This would be your actual program instruction for approving allowances)
   // const approveInstruction = new TransactionInstruction({
@@ -105,11 +111,11 @@ export async function buildApproveAllowanceTransactionWithMemo(params: {
   //   data: Buffer.from([...])
   // });
   // transaction.add(approveInstruction);
-  
+
   const { blockhash } = await connection.getLatestBlockhash();
   transaction.recentBlockhash = blockhash;
   transaction.feePayer = userPublicKey;
-  
+
   return transaction;
 }
 
@@ -119,21 +125,24 @@ export async function buildApproveAllowanceTransactionWithMemo(params: {
 export async function executeTransactionWithWallet(params: {
   transaction: Transaction;
   connection: Connection;
-  sendTransaction: (transaction: Transaction, connection: Connection) => Promise<string>;
+  sendTransaction: (
+    transaction: Transaction,
+    connection: Connection,
+  ) => Promise<string>;
 }) {
   const { transaction, connection, sendTransaction } = params;
-  
+
   try {
     // Send transaction through wallet
     // The memo instruction will appear in the wallet popup
     const signature = await sendTransaction(transaction, connection);
-    
+
     // Wait for confirmation
     await connection.confirmTransaction(signature);
-    
+
     return signature;
   } catch (error) {
-    console.error('Transaction failed:', error);
+    console.error("Transaction failed:", error);
     throw error;
   }
 }

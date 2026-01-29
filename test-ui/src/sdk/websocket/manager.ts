@@ -1,4 +1,23 @@
-import type { AtomikConfig } from "../env";
+import type { AtomikConfig, AtomikSolanaConfig, WebSocketConfig } from "../env";
+import { getApiConfig } from "../env";
+
+/**
+ * Get WebSocket config from either AtomikConfig or AtomikSolanaConfig
+ */
+function getWebSocketConfig(
+  config: AtomikConfig | AtomikSolanaConfig,
+): WebSocketConfig {
+  if ("websocket" in config) {
+    return config.websocket;
+  }
+  // Legacy AtomikSolanaConfig - use default websocket config
+  return {
+    enabled: false,
+    reconnectAttempts: 5,
+    reconnectDelay: 1000,
+    connectionTimeout: 10000,
+  };
+}
 
 export interface WebSocketMessage {
   type: string;
@@ -52,7 +71,7 @@ type ConnectionHandler = () => void;
 export class WebSocketConnection {
   private ws: WebSocket | null = null;
   private url: string;
-  private config: AtomikConfig["websocket"];
+  private config: WebSocketConfig;
   private messageHandlers = new Map<string, MessageHandler<unknown>[]>();
   private errorHandlers: ErrorHandler[] = [];
   private connectHandlers: ConnectionHandler[] = [];
@@ -61,7 +80,7 @@ export class WebSocketConnection {
   private reconnectTimer: number | null = null;
   private isIntentionallyClosed = false;
 
-  constructor(url: string, config: AtomikConfig["websocket"]) {
+  constructor(url: string, config: WebSocketConfig) {
     this.url = url;
     this.config = config;
   }
@@ -219,9 +238,9 @@ export class WebSocketConnection {
  */
 export class AtomikWebSocketManager {
   private connections = new Map<string, WebSocketConnection>();
-  private config: AtomikConfig;
+  private config: AtomikConfig | AtomikSolanaConfig;
 
-  constructor(config: AtomikConfig) {
+  constructor(config: AtomikConfig | AtomikSolanaConfig) {
     this.config = config;
   }
 
@@ -231,7 +250,8 @@ export class AtomikWebSocketManager {
   getConnection(name: string, url?: string): WebSocketConnection {
     if (!this.connections.has(name)) {
       const wsUrl = url || this.getDefaultWebSocketUrl();
-      const connection = new WebSocketConnection(wsUrl, this.config.websocket);
+      const wsConfig = getWebSocketConfig(this.config);
+      const connection = new WebSocketConnection(wsUrl, wsConfig);
       this.connections.set(name, connection);
     }
 
@@ -246,7 +266,8 @@ export class AtomikWebSocketManager {
     wins: WebSocketConnection;
     blocks: WebSocketConnection;
   }> {
-    if (!this.config.websocket.enabled) {
+    const wsConfig = getWebSocketConfig(this.config);
+    if (!wsConfig.enabled) {
       throw new Error("WebSocket connections are disabled in configuration");
     }
 
@@ -280,7 +301,8 @@ export class AtomikWebSocketManager {
    * Get the default WebSocket URL from API config
    */
   private getDefaultWebSocketUrl(): string {
-    return this.config.api.baseUrl.replace(/^http/, "ws");
+    const apiConfig = getApiConfig(this.config);
+    return apiConfig.baseUrl.replace(/^http/, "ws");
   }
 }
 
@@ -288,7 +310,8 @@ export class AtomikWebSocketManager {
  * Factory function to create a WebSocket manager
  */
 export function createWebSocketManager(
-  config: AtomikConfig,
+  config: AtomikConfig | AtomikSolanaConfig,
 ): AtomikWebSocketManager {
+  return new AtomikWebSocketManager(config);
   return new AtomikWebSocketManager(config);
 }

@@ -1,5 +1,10 @@
 import { Connection, PublicKey } from "@solana/web3.js";
-import type { AtomikConfig } from "../env";
+import type {
+  AtomikConfig,
+  AtomikSolanaConfig,
+  BlockchainConfig,
+} from "../env";
+import { getBlockchainConfig } from "../env";
 import { PDADerivation } from "../../services/solana/pda";
 import { parseCasinoAccount } from "../../services/solana/utils";
 import type { CasinoAccountState } from "../../services/solana/types";
@@ -46,16 +51,21 @@ export interface BettingOperations {
  */
 export class AtomikBettingService implements BettingOperations {
   private connection: Connection;
+  private blockchainConfig: BlockchainConfig;
   private pda: PDADerivation;
   private apiClient: AtomikApiClient;
   private vaultProgramId: PublicKey;
 
-  constructor(config: AtomikConfig, apiClient: AtomikApiClient) {
-    this.apiClient = apiClient;
-    this.connection = new Connection(config.solana.rpcUrl, {
-      commitment: config.solana.commitment,
+  constructor(
+    config: AtomikConfig | AtomikSolanaConfig,
+    apiClient: AtomikApiClient,
+  ) {
+    this.blockchainConfig = getBlockchainConfig(config);
+    this.connection = new Connection(this.blockchainConfig.rpcUrl, {
+      commitment: this.blockchainConfig.commitment,
     });
-    this.vaultProgramId = new PublicKey(config.solana.programId);
+    this.apiClient = apiClient;
+    this.vaultProgramId = new PublicKey(this.blockchainConfig.programId);
     this.pda = new PDADerivation(this.vaultProgramId);
   }
 
@@ -235,9 +245,10 @@ export class AtomikBettingService implements BettingOperations {
 
 /**
  * Factory function to create a betting service
+ * Supports both new generic config and legacy Solana config
  */
 export function createBettingService(
-  config: AtomikConfig,
+  config: AtomikConfig | AtomikSolanaConfig,
   apiClient: AtomikApiClient,
 ): AtomikBettingService {
   return new AtomikBettingService(config, apiClient);
