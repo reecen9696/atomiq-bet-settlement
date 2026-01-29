@@ -45,18 +45,22 @@ export function LiveCasinoDashboard() {
     const fetchInitialData = async () => {
       try {
         setLoading(true);
-        
+
         // Fetch recent blocks
         const blocksResponse = await fetch(`${apiUrl}/blocks?limit=5`);
         if (blocksResponse.ok) {
           const blocksData = await blocksResponse.json();
           if (blocksData.blocks && Array.isArray(blocksData.blocks)) {
-            setRecentBlocks(blocksData.blocks.map((block: any) => ({
-              height: block.height,
-              hash: block.hash,
-              tx_count: block.tx_count || 0,
-              timestamp: block.time ? new Date(block.time).getTime() : Date.now(),
-            })));
+            setRecentBlocks(
+              blocksData.blocks.map((block: any) => ({
+                height: block.height,
+                hash: block.hash,
+                tx_count: block.tx_count || 0,
+                timestamp: block.time
+                  ? new Date(block.time).getTime()
+                  : Date.now(),
+              })),
+            );
           }
         }
 
@@ -113,7 +117,7 @@ export function LiveCasinoDashboard() {
 
     const initialTimeout = setTimeout(fetchStats, 2000);
     const interval = setInterval(fetchStats, 10000);
-    
+
     return () => {
       clearTimeout(initialTimeout);
       clearInterval(interval);
@@ -178,16 +182,24 @@ export function LiveCasinoDashboard() {
           console.log("❌ WebSocket disconnected");
           setWsConnected(false);
 
-          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
+          const delay = Math.min(
+            1000 * Math.pow(2, reconnectAttemptsRef.current),
+            30000,
+          );
           reconnectAttemptsRef.current++;
-          
-          console.log(`Reconnecting in ${delay/1000}s (attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})`);
-          
+
+          console.log(
+            `Reconnecting in ${delay / 1000}s (attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})`,
+          );
+
           reconnectTimeoutRef.current = setTimeout(connectWebSocket, delay);
         };
       } catch (error) {
         console.error("Failed to create WebSocket:", error);
-        const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
+        const delay = Math.min(
+          1000 * Math.pow(2, reconnectAttemptsRef.current),
+          30000,
+        );
         reconnectAttemptsRef.current++;
         reconnectTimeoutRef.current = setTimeout(connectWebSocket, delay);
       }
@@ -236,7 +248,7 @@ export function LiveCasinoDashboard() {
       {error && (
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
           <p className="text-sm text-yellow-700">{error}</p>
-          <button 
+          <button
             onClick={() => {
               reconnectAttemptsRef.current = 0;
               setError(null);
@@ -312,11 +324,10 @@ export function LiveCasinoDashboard() {
 
       {/* Recent Wins */}
       <div className="bg-white rounded-lg shadow-lg border-l-4 border-green-500 p-6">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-          🎰 Recent Wins
-        </h2>
         {loading ? (
-          <div className="text-gray-500 text-center py-8">Loading recent wins...</div>
+          <div className="text-gray-500 text-center py-8">
+            Loading recent wins...
+          </div>
         ) : recentWins.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -352,8 +363,7 @@ export function LiveCasinoDashboard() {
                       {formatAddress(win.wallet)}
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-green-600">
-                      +{win.amount_won.toFixed(4)}{" "}
-                      {win.currency}
+                      +{win.amount_won.toFixed(4)} {win.currency}
                     </td>
                     <td className="px-4 py-3 text-gray-600">
                       #{win.block_height}
@@ -379,7 +389,9 @@ export function LiveCasinoDashboard() {
           📦 Latest Blocks
         </h2>
         {loading ? (
-          <div className="text-gray-500 text-center py-8">Loading recent blocks...</div>
+          <div className="text-gray-500 text-center py-8">
+            Loading recent blocks...
+          </div>
         ) : recentBlocks.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
