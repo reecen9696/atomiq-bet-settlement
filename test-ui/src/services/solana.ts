@@ -751,6 +751,7 @@ export class SolanaService {
       MemoMessages.depositSol(amountSol),
     );
 
+    // Create transaction with memo first, then main instruction
     const tx = new Transaction().add(memoInstruction).add(ix);
     addPriorityFeeInstructions(tx, 15000);
     tx.feePayer = params.user;

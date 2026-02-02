@@ -563,6 +563,8 @@ export function VaultManager() {
       setLastSignature(signature);
       setLastAllowancePda(allowancePda);
       setRevokeAllowancePda(allowancePda);
+      // Store in localStorage for betting interface
+      localStorage.setItem('lastAllowancePda', allowancePda);
 
       if (allowanceStorageKey) {
         try {
