@@ -6,12 +6,12 @@ node_modules/
 # Rust
 target/
 **/*.rs.bk
-Cargo.lock
+# Keep Cargo.lock for applications (ensures reproducible builds)
+# For libraries, you would want to ignore Cargo.lock
 
 # Anchor
 .anchor/
 test-ledger/
-.DS_Store
 
 # Testing
 coverage/
@@ -20,11 +20,11 @@ coverage/
 dist/
 build/
 
-# Environment
+# Environment files (contain secrets like RPC URLs, API keys)
 .env
 .env.local
 .env.*.local
-*.env
+# Keep .env.example as a template
 
 # IDE
 .vscode/
@@ -33,24 +33,33 @@ build/
 *.swo
 *~
 
-# Logs
-*.log
+# Logs (keep directory structure with .gitkeep)
+logs/*.log
+logs/*.pid
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Keys (NEVER commit!)
-keys/
-*.key
-*.keypair
-id.json
-*keypair.json
-phantom.json
+# Keypairs (NEVER commit! These contain private keys)
+keys/*.json
+keys/*.key
+keys/*.keypair
+**/id.json
+**/phantom*.json
+**/*keypair.json
+**/*.keypair
+# Keep keys directory structure with README
+
+# Redis
+dump.rdb
+*.rdb
 
 # Database
 *.db
 *.sqlite
+*.sqlite3

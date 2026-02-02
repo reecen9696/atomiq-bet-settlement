@@ -44,8 +44,9 @@ export function BettingInterface({
     setError("");
     try {
       // Retrieve the last approved allowance PDA from localStorage
-      const allowancePda = localStorage.getItem('lastAllowancePda') || undefined;
-      
+      const allowancePda =
+        localStorage.getItem("lastAllowancePda") || undefined;
+
       const response = await playCoinflip({
         player_id: publicKey.toBase58(),
         choice,
@@ -84,7 +85,7 @@ export function BettingInterface({
     );
   }
 
-  const hasAllowance = localStorage.getItem('lastAllowancePda');
+  const hasAllowance = localStorage.getItem("lastAllowancePda");
 
   return (
     <div className="p-6 bg-white rounded-lg shadow-lg border border-gray-200">
@@ -99,7 +100,8 @@ export function BettingInterface({
         <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start">
           <AlertCircle className="w-5 h-5 text-yellow-600 mr-2 mt-0.5 flex-shrink-0" />
           <div className="text-sm text-yellow-800">
-            <strong>No allowance found.</strong> Please approve an allowance in the Vault Manager before placing bets.
+            <strong>No allowance found.</strong> Please approve an allowance in
+            the Vault Manager before placing bets.
           </div>
         </div>
       )}
