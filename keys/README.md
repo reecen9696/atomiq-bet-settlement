@@ -44,6 +44,7 @@ solana-keygen pubkey test-user-keypair.json
 ## Security Notes
 
 ⚠️ **NEVER commit keypairs to git!**
+
 - These files contain private keys
 - The .gitignore is configured to exclude all .json, .key, and .keypair files in this directory
 - For production, use HSM/KMS instead of file-based keypairs
@@ -53,6 +54,7 @@ solana-keygen pubkey test-user-keypair.json
 ## Production Considerations
 
 For production deployments:
+
 1. Generate keypairs on secure, air-gapped machines
 2. Store in Hardware Security Module (HSM) or Key Management Service (KMS)
 3. Never store in plaintext files
