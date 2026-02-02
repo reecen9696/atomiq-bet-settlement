@@ -563,12 +563,18 @@ export function VaultManager() {
       setLastSignature(signature);
       setLastAllowancePda(allowancePda);
       setRevokeAllowancePda(allowancePda);
-      // Store in localStorage for betting interface
-      localStorage.setItem('lastAllowancePda', allowancePda);
+
+      console.log("🔑 Allowance approved - PDA:", allowancePda);
+      console.log("🔑 Saving to localStorage key:", allowanceStorageKey);
 
       if (allowanceStorageKey) {
         try {
           localStorage.setItem(allowanceStorageKey, allowancePda);
+          console.log("✅ Successfully saved allowance PDA to localStorage");
+          console.log(
+            "🔍 Verify - reading back from localStorage:",
+            localStorage.getItem(allowanceStorageKey),
+          );
         } catch (err) {
           console.warn("Unable to persist allowance PDA:", err);
         }

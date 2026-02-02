@@ -239,7 +239,7 @@ impl BatchProcessor {
             created_at: chrono::Utc::now(),
             user_wallet: settlement.player_address.clone(),
             vault_address: String::new(), // Will be derived in Solana tx building
-            allowance_pda: None, // Will be derived in Solana tx building
+            allowance_pda: settlement.allowance_pda.clone(), // Use allowance from blockchain
             casino_id: None,
             game_type: settlement.game_type.clone(),
             stake_amount: settlement.bet_amount as i64,

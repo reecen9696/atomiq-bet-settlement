@@ -42,6 +42,9 @@ pub struct GameSettlementInfo {
     pub retry_count: u32,
     #[serde(default)]
     pub next_retry_after: Option<i64>,
+    /// Solana allowance PDA for gasless transactions
+    #[serde(default)]
+    pub allowance_pda: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

@@ -8,7 +8,17 @@ use crate::solana_account_parsing::parse_allowance_nonce_registry_next_nonce;
 
 /// Check if an allowance account exists on-chain
 pub fn allowance_account_exists(client: &RpcClient, allowance: &Pubkey) -> bool {
-    client.get_account(allowance).is_ok()
+    match client.get_account(allowance) {
+        Ok(_) => true,
+        Err(e) => {
+            tracing::warn!(
+                allowance_pda = %allowance,
+                error = %e,
+                "Allowance account not found - check RPC endpoint or account initialization"
+            );
+            false
+        }
+    }
 }
 
 /// Derive the latest allowance PDA from the nonce registry
