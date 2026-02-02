@@ -247,8 +247,17 @@ export function addPriorityFeeInstructions(
     microLamports: priorityFeeInMicroLamports,
   });
 
-  // Add these instructions at the beginning of the transaction
-  tx.instructions.unshift(computeUnitInstruction, priorityFeeInstruction);
+  // Add these instructions at the beginning, but preserve memo instructions at position 0
+  const firstInstruction = tx.instructions[0];
+  const isMemoInstruction = firstInstruction?.programId.equals(new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'));
+  
+  if (isMemoInstruction) {
+    // Insert priority fee instructions after the memo instruction (at positions 1 and 2)
+    tx.instructions.splice(1, 0, computeUnitInstruction, priorityFeeInstruction);
+  } else {
+    // No memo instruction, add priority fees at the beginning as usual
+    tx.instructions.unshift(computeUnitInstruction, priorityFeeInstruction);
+  }
   return tx;
 }
 

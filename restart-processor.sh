@@ -16,7 +16,7 @@ sleep 1
 # Start processor using the start-processor.sh script
 echo ""
 echo "Starting processor with updated config..."
-cd /Users/reece/code/projects/atomik/transaction-processor
+cd "$(dirname "$0")"
 
 # Run the processor binary directly in the background
 ./start-processor.sh > logs/processor.log 2>&1 &

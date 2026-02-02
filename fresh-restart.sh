@@ -14,7 +14,7 @@ pkill -9 -f "target/release/processor" 2>/dev/null && echo "  ✅ Processor stop
 # 2. Stop blockchain API
 echo ""
 echo "2️⃣  Stopping blockchain API..."
-cd /Users/reece/code/projects/atomik/blockchain
+cd /Users/reece/code/projects/atomik/backend/blockchain
 pkill -9 -f "api-finalized" 2>/dev/null && echo "  ✅ API stopped" || echo "  ℹ️  No API running"
 
 sleep 2
@@ -22,13 +22,13 @@ sleep 2
 # 3. Clear blockchain database
 echo ""
 echo "3️⃣  Clearing blockchain database..."
-rm -rf /Users/reece/code/projects/atomik/blockchain/DB/blockchain_data/* 2>/dev/null || true
+rm -rf /Users/reece/code/projects/atomik/backend/blockchain/DB/blockchain_data/* 2>/dev/null || true
 echo "  ✅ Database cleared"
 
 # 4. Start blockchain API
 echo ""
 echo "4️⃣  Starting blockchain API..."
-cd /Users/reece/code/projects/atomik/blockchain
+cd /Users/reece/code/projects/atomik/backend/blockchain
 nohup cargo run --release --bin api-finalized -- --host 0.0.0.0 --port 8080 --db-path ./DB/blockchain_data > logs/blockchain-api.log 2>&1 &
 API_PID=$!
 echo "  ✅ Blockchain API started (PID: $API_PID)"
@@ -43,7 +43,7 @@ curl -s http://localhost:8080/health > /dev/null 2>&1 && echo "  ✅ API is resp
 # 6. Start processor with new config
 echo ""
 echo "5️⃣  Starting processor with PROCESSOR_MAX_BETS_PER_TX=6..."
-cd /Users/reece/code/projects/atomik/transaction-processor
+cd "$(dirname "$0")"
 
 # Clear old logs
 > logs/processor.log
@@ -85,6 +85,7 @@ echo ""
 echo "📋 Useful commands:"
 echo "  View API logs:       tail -f /Users/reece/code/projects/atomik/blockchain/logs/blockchain-api.log"
 echo "  View processor logs: tail -f /Users/reece/code/projects/atomik/transaction-processor/logs/processor.log"
+echo "  View processor logs: tail -f $(pwd)/logs/processor.log"
 echo "  Check API health:    curl http://localhost:8080/health"
 echo ""
 echo "⚙️  Configuration:"

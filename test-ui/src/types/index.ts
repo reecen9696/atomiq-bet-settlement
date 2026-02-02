@@ -11,6 +11,7 @@ export interface CoinFlipPlayRequest {
   token: Token;
   bet_amount: number;
   wallet_signature?: string | null;
+  allowance_pda?: string | null;
 }
 
 export type GameResponse =
