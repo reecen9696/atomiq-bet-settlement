@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { AlertTriangle, CheckCircle, X } from "lucide-react";
 
 interface CasinoStats {
   total_wagered: number;
@@ -26,10 +28,20 @@ interface Block {
   timestamp: number;
 }
 
+interface NotificationMessage {
+  id: number;
+  type: "settlement_failed" | "info" | "error";
+  message: string;
+  details?: string;
+  timestamp: number;
+}
+
 export function LiveCasinoDashboard() {
+  const { publicKey } = useWallet();
   const [stats, setStats] = useState<CasinoStats | null>(null);
   const [recentWins, setRecentWins] = useState<CasinoWin[]>([]);
   const [recentBlocks, setRecentBlocks] = useState<Block[]>([]);
+  const [notifications, setNotifications] = useState<NotificationMessage[]>([]);
   const [wsConnected, setWsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -115,12 +127,11 @@ export function LiveCasinoDashboard() {
       }
     };
 
+    // Initial load only - no automatic polling
     const initialTimeout = setTimeout(fetchStats, 2000);
-    const interval = setInterval(fetchStats, 10000);
 
     return () => {
       clearTimeout(initialTimeout);
-      clearInterval(interval);
     };
   }, [apiUrl]);
 
@@ -137,11 +148,20 @@ export function LiveCasinoDashboard() {
       }
 
       try {
-        const ws = new WebSocket(`${wsUrl}/ws?casino=true&blocks=true`);
+        const walletParam = publicKey
+          ? `&settlements=true&wallet_address=${publicKey.toBase58()}`
+          : "";
+        const ws = new WebSocket(
+          `${wsUrl}/ws?casino=true&blocks=true${walletParam}`,
+        );
         wsRef.current = ws;
 
         ws.onopen = () => {
           console.log("✅ WebSocket connected");
+          console.log(
+            "🔍 Wallet address for filtering:",
+            publicKey ? publicKey.toBase58() : "No wallet",
+          );
           setWsConnected(true);
           setError(null);
           reconnectAttemptsRef.current = 0;
@@ -150,11 +170,33 @@ export function LiveCasinoDashboard() {
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
+            console.log("📨 WebSocket message received:", data.type, data);
 
             if (data.type === "casino_win") {
               setRecentWins((prev) => [data, ...prev].slice(0, 10));
             } else if (data.type === "casino_stats") {
               setStats(data);
+            } else if (data.type === "settlement_failed") {
+              console.log("🚨 Settlement failure notification received:", data);
+              // Handle settlement failure notification
+              const failureMessage = data.is_permanent
+                ? `Settlement failed permanently: ${data.error_message}`
+                : `Settlement failed (retry ${data.retry_count}): ${data.error_message}`;
+
+              setNotifications((prev) =>
+                [
+                  {
+                    id: Date.now(),
+                    type: "settlement_failed" as const,
+                    message: failureMessage,
+                    details: `Transaction ID: ${data.transaction_id} | Bet: ${data.bet_amount} SOL`,
+                    timestamp: Date.now(),
+                  },
+                  ...prev,
+                ].slice(0, 50),
+              ); // Keep last 50 messages
+
+              console.log("🚨 Settlement failure:", data);
             } else if (data.type === "new_block") {
               setRecentBlocks((prev) =>
                 [
@@ -216,7 +258,7 @@ export function LiveCasinoDashboard() {
         wsRef.current.close();
       }
     };
-  }, []);
+  }, [publicKey]); // Reconnect WebSocket when wallet changes
 
   const formatAddress = (address: string) => {
     if (address.length <= 12) return address;
@@ -439,6 +481,78 @@ export function LiveCasinoDashboard() {
             {wsConnected
               ? "Waiting for blocks..."
               : "Connecting to blockchain..."}
+          </div>
+        )}
+      </div>
+
+      {/* Notifications Panel */}
+      <div className="bg-white rounded-lg shadow-lg border border-gray-200">
+        <div className="p-6 border-b border-gray-200">
+          <h2 className="text-xl font-bold text-gray-800 flex items-center">
+            <AlertTriangle className="w-5 h-5 mr-2 text-orange-500" />
+            Settlement Notifications
+            {notifications.length > 0 && (
+              <span className="ml-2 px-2 py-1 text-xs bg-red-100 text-red-800 rounded-full">
+                {notifications.length}
+              </span>
+            )}
+          </h2>
+        </div>
+        <div className="h-64 overflow-y-auto p-4 space-y-3">
+          {notifications.length === 0 ? (
+            <div className="text-center text-gray-500 py-8">
+              <CheckCircle className="w-8 h-8 mx-auto mb-2 text-green-500" />
+              <p>No settlement failures - all good!</p>
+            </div>
+          ) : (
+            notifications.map((notification) => (
+              <div
+                key={notification.id}
+                className={`p-3 rounded-lg border-l-4 ${
+                  notification.type === "settlement_failed"
+                    ? "bg-red-50 border-red-500"
+                    : "bg-gray-50 border-gray-500"
+                }`}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-900">
+                      {notification.message}
+                    </p>
+                    {notification.details && (
+                      <p className="text-sm text-gray-600 mt-1">
+                        {notification.details}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center ml-4 space-x-2">
+                    <span className="text-xs text-gray-500">
+                      {new Date(notification.timestamp).toLocaleTimeString()}
+                    </span>
+                    <button
+                      onClick={() =>
+                        setNotifications((prev) =>
+                          prev.filter((n) => n.id !== notification.id),
+                        )
+                      }
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        {notifications.length > 0 && (
+          <div className="p-4 border-t border-gray-200">
+            <button
+              onClick={() => setNotifications([])}
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              Clear all notifications
+            </button>
           </div>
         )}
       </div>

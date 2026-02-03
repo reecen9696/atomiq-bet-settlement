@@ -116,11 +116,7 @@ export function useTransactions() {
 
   useEffect(() => {
     fetchTransactions();
-
-    // Poll for updates every 5 seconds
-    const interval = setInterval(fetchTransactions, 5000);
-
-    return () => clearInterval(interval);
+    // Manual refresh only - no automatic polling
   }, [fetchTransactions]);
 
   return {

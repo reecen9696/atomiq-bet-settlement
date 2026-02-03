@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { useApi } from "../hooks/useApi";
+import { solanaService } from "../services/solana";
 import {
   Coins,
   Loader2,
@@ -20,6 +21,7 @@ export function BettingInterface({
   // allowanceRemaining, // TODO: Use for display
 }: BettingInterfaceProps) {
   const { publicKey } = useWallet();
+  const { connection } = useConnection();
   const { playCoinflip, getGameResult, isLoading } = useApi();
   const [amount, setAmount] = useState("0.01");
   const [choice, setChoice] = useState<"heads" | "tails">("heads");
@@ -43,9 +45,18 @@ export function BettingInterface({
 
     setError("");
     try {
-      // Retrieve the last approved allowance PDA from localStorage
-      const allowancePda =
-        localStorage.getItem("lastAllowancePda") || undefined;
+      // Get the current allowance PDA dynamically
+      const allowancePda = await solanaService.getCurrentAllowancePDA({
+        user: publicKey,
+        connection,
+      });
+
+      if (!allowancePda) {
+        setError(
+          "No active allowance found. Please create an allowance first.",
+        );
+        return;
+      }
 
       const response = await playCoinflip({
         player_id: publicKey.toBase58(),
