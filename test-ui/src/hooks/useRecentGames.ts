@@ -27,8 +27,7 @@ export function useRecentGames() {
 
   useEffect(() => {
     refresh();
-    const interval = setInterval(refresh, 5000);
-    return () => clearInterval(interval);
+    // Manual refresh only - no automatic polling
   }, [refresh]);
 
   return { games, isLoading, error, refresh };

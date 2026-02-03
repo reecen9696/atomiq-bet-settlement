@@ -65,10 +65,7 @@ function AppContent() {
     };
 
     checkAllowance();
-
-    // Poll for updates every 5 seconds
-    const interval = setInterval(checkAllowance, 5000);
-    return () => clearInterval(interval);
+    // Manual refresh only - no automatic polling
   }, [publicKey, connection]);
 
   return (

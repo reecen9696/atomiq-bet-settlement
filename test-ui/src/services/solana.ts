@@ -133,7 +133,7 @@ async function confirmSignatureRobust(
   // TransactionExpiredBlockheightExceededError under slow RPC / backoff.
   // For UX, polling signature statuses is more reliable.
   const timeoutMs = opts?.timeoutMs ?? 60_000;
-  const pollIntervalMs = opts?.pollIntervalMs ?? 1_250;
+  const pollIntervalMs = opts?.pollIntervalMs ?? 3_000;
 
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -1022,6 +1022,46 @@ export class SolanaService {
   getAccountExplorerUrl(address: string, cluster?: string): string {
     const c = cluster ?? SOLANA_NETWORK;
     return `https://explorer.solana.com/address/${address}?cluster=${c}`;
+  }
+
+  /**
+   * Get the current allowance PDA for a user by deriving it from the current nonce
+   * This is the PDA that should be used for betting operations
+   */
+  async getCurrentAllowancePDA(params: {
+    user: PublicKey;
+    connection?: Connection;
+    casinoPda?: string;
+  }): Promise<string | null> {
+    try {
+      const conn = params.connection ?? this.connection;
+      const casinoPda = params.casinoPda ?? (await this.deriveCasinoPDA());
+
+      // Get the current nonce
+      const currentNonce = await this.getNextAllowanceNonce({
+        user: params.user,
+        casinoPda,
+        connection: conn,
+      });
+
+      // If no nonce (no allowances created yet), return null
+      if (currentNonce === 0n) {
+        return null;
+      }
+
+      // Derive the allowance PDA for the previous nonce (current active allowance)
+      const activeNonce = currentNonce - 1n;
+      const allowancePda = this.pdaDerivation.deriveAllowancePDA(
+        params.user,
+        activeNonce,
+        new PublicKey(casinoPda),
+      );
+
+      return allowancePda.toBase58();
+    } catch (error) {
+      console.error("Error getting current allowance PDA:", error);
+      return null;
+    }
   }
 }
 
