@@ -1036,30 +1036,30 @@ export class SolanaService {
     try {
       const conn = params.connection ?? this.connection;
       const casinoPda = params.casinoPda ?? (await this.deriveCasinoPDA());
-      
+
       // Get the current nonce
       const currentNonce = await this.getNextAllowanceNonce({
         user: params.user,
         casinoPda,
         connection: conn,
       });
-      
+
       // If no nonce (no allowances created yet), return null
       if (currentNonce === 0n) {
         return null;
       }
-      
+
       // Derive the allowance PDA for the previous nonce (current active allowance)
       const activeNonce = currentNonce - 1n;
       const allowancePda = this.pdaDerivation.deriveAllowancePDA(
         params.user,
         activeNonce,
-        new PublicKey(casinoPda)
+        new PublicKey(casinoPda),
       );
-      
+
       return allowancePda.toBase58();
     } catch (error) {
-      console.error('Error getting current allowance PDA:', error);
+      console.error("Error getting current allowance PDA:", error);
       return null;
     }
   }
